@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | Better Inside{% endblock %}
+
+{% block content %}
+    <!-- Main App Screen -->
+    <div id="app-screen" class="screen active">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="sidebar">
+            <div class="sidebar-header">
+                <img src="/static/Logos/Logo Icon SVG.svg" class="logo-icon" alt="Icon">
+                <img src="/static/Logos/Logo Hrizontal Full SVG.svg" class="logo-full" alt="Full Logo">
+                <button id="sidebar-toggle-btn" class="toggle-btn" aria-label="Toggle Sidebar">
+                    <i class='bx bx-chevron-left'></i>
+                </button>
+            </div>
+            
+            <div class="sidebar-menu">
+                <div class="menu-label">MENU</div>
+                <ul class="nav-links" id="main-nav">
+                    <!-- Nav items injected via JS based on role -->
+                </ul>
+                
+                <div class="menu-label label-bottom">SETTINGS</div>
+                <ul class="nav-links">
+                    <li>
+                        <a href="#" id="theme-toggle">
+                            <i class='bx bx-moon'></i>
+                            <span class="link-name">Dark Mode</span>
+                        </a>
+                        <span class="tooltip">Theme</span>
+                    </li>
+                    <li>
+                        <a href="#" id="logout-btn" class="logout">
+                            <i class='bx bx-log-out'></i>
+                            <span class="link-name">Logout</span>
+                        </a>
+                        <span class="tooltip">Logout</span>
+                    </li>
+                </ul>
+            </div>
+            
+            <div class="sidebar-footer">
+                <div class="user-profile-mini">
+                    <div class="avatar">
+                        <img id="sidebar-user-avatar" src="https://ui-avatars.com/api/?name=Admin&background=random" alt="User">
+                    </div>
+                    <div class="user-details">
+                        <span id="sidebar-user-name" class="name">Admin</span>
+                        <span id="sidebar-user-role" class="role">Administrator</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="top-header">
+                <div class="header-left">
+                    <button id="mobile-menu-btn" class="icon-btn mobile-only">
+                        <i class='bx bx-menu'></i>
+                    </button>
+                    <h1 id="page-title">Dashboard</h1>
+                </div>
+                
+                <div class="header-right">
+                    <div class="search-bar">
+                        <i class='bx bx-search'></i>
+                        <input type="text" placeholder="Search...">
+                    </div>
+                    
+                    <div class="notification-wrapper">
+                        <button class="icon-btn" id="notif-btn">
+                            <i class='bx bx-bell'></i>
+                            <span class="badge" style="display: none;">0</span>
+                        </button>
+                        <div class="notification-dropdown">
+                            <h4>Notifications</h4>
+                            <div class="notif-list" id="notif-list">
+                                <!-- Notifications injected here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="profile-dropdown">
+                        <div class="profile-trigger" id="profile-btn">
+                            <img id="header-user-avatar" src="https://ui-avatars.com/api/?name=Admin&background=random" alt="User">
+                            <i class='bx bx-chevron-down'></i>
+                        </div>
+                        <div class="profile-menu">
+                            <div class="profile-header">
+                                <span id="dropdown-user-name" class="name">Admin</span>
+                                <span id="dropdown-user-role" class="role">Administrator</span>
+                            </div>
+                            <ul>
+                                <li><a href="#"><i class='bx bx-user'></i> Profile</a></li>
+                                <li><a href="#"><i class='bx bx-cog'></i> Settings</a></li>
+                                <li class="divider"></li>
+                                <li><a href="#" id="dropdown-logout"><i class='bx bx-log-out'></i> Logout</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Dynamic Section Container -->
+            <div id="content-area" class="content-area">
+                <!-- Content injected via JS -->
+            </div>
+        </main>
+    </div>
+
+    <!-- Dedicated pages are rendered in content-area -->
+
+    <!-- Hidden Template for Contract Generation -->
+    <div id="contract-pdf-template" style="display: none;">
+        <div class="contract-doc" style="padding: 40px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333;">
+            <div style="text-align: center; margin-bottom: 40px;">
+                <h1 style="font-size: 24px; color: #111; letter-spacing: 2px; text-transform: uppercase;">Service Contract</h1>
+                <p style="font-size: 14px; color: #666;">Better Inside Creative Agency</p>
+                <hr style="border: 0; border-top: 1px solid #eee; margin-top: 20px;">
+            </div>
+            <div style="margin-bottom: 30px;">
+                <p><strong>Date:</strong> <span id="c-date"></span></p>
+                <p><strong>Contract ID:</strong> <span id="c-id"></span></p>
+            </div>
+            <div style="margin-bottom: 30px; line-height: 1.6;">
+                <p>This Contract is entered into by and between <strong>Better Inside</strong> ("Agency") and <strong id="c-client-name"></strong> ("Client").</p>
+                <p>
+                    <strong>1. Services Rendered</strong><br>
+                    The Agency agrees to provide the following project services: <span id="c-project"></span>.
+                </p>
+                <p>
+                    <strong>2. Compensation</strong><br>
+                    The Client shall pay the Agency the total amount of <strong>$<span id="c-amount"></span></strong> for the services rendered.
+                </p>
+                <p>
+                    <strong>3. Terms and Conditions</strong><br>
+                    Both parties agree to adhere to the project timeline and milestones as discussed. This document serves as a legally binding agreement.
+                </p>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-top: 100px;">
+                <div style="width: 45%;">
+                    <div style="border-top: 1px solid #333; padding-top: 10px;">
+                        <p><strong>Better Inside (Agency)</strong></p>
+                        <p>Signature / Date</p>
+                    </div>
+                </div>
+                <div style="width: 45%;">
+                    <div style="border-top: 1px solid #333; padding-top: 10px;">
+                        <p><strong id="c-client-sign">Client</strong></p>
+                        <p>Signature / Date</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
