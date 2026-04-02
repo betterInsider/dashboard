@@ -57,7 +57,12 @@ COMPANY_INFO = {
         { 'name': 'Apurva Garg', 'role': 'Founder, Management' },
         { 'name': 'Rishabh Raj', 'role': 'Founder, Designer' }
     ],
-    'contactEmail': 'betterinside@admin'
+    'contactEmail': 'betterinside@admin',
+    'creatorProfile': {
+        'name': 'Krishna Singh',
+        'experience': 'Worked at TCS Bengalore',
+        'title': 'Fullstack Developer'
+    }
 }
 
 def home_view(request):
@@ -92,16 +97,32 @@ def api_db(request):
             t['projectId'] = t['project_id']
             t['assignedTo'] = str(t['assigned_to'])
             
-        contracts = list(Contract.objects.all().values('id', 'client_id', 'client_name', 'project_details', 'amount', 'date'))
+        contracts = list(Contract.objects.all().values(
+            'id', 'client_id', 'client_name', 'client_contact', 'project_details',
+            'service_scope', 'amount', 'date', 'start_date', 'end_date',
+            'payment_terms', 'terms_and_conditions'
+        ))
         for c in contracts:
             c['clientId'] = c['client_id']
             c['clientName'] = c['client_name']
+            c['clientContact'] = c['client_contact'] or ''
             c['projectDetails'] = c['project_details']
+            c['serviceScope'] = c['service_scope'] or ''
+            c['startDate'] = c['start_date'] or ''
+            c['endDate'] = c['end_date'] or ''
+            c['paymentTerms'] = c['payment_terms'] or ''
+            c['termsAndConditions'] = c['terms_and_conditions'] or ''
 
         documents = list(Document.objects.all().values('id', 'title', 'type', 'size'))
-        milestones = list(Milestone.objects.all().values('id', 'task_id', 'title', 'description', 'deadline', 'status', 'order', 'admin_feedback', 'submitted_at', 'proof_image', 'proof_name', 'submission_note'))
+        milestones = list(Milestone.objects.all().values(
+            'id', 'task_id', 'title', 'description', 'start_date', 'delivery_date',
+            'deadline', 'status', 'order', 'admin_feedback', 'submitted_at',
+            'proof_image', 'proof_name', 'submission_note'
+        ))
         for m in milestones:
             m['taskId'] = str(m['task_id'])
+            m['startDate'] = m['start_date'] or ''
+            m['deliveryDate'] = m['delivery_date'] or m['deadline'] or ''
             m['adminFeedback'] = m['admin_feedback'] or ''
             m['submittedAt'] = str(m['submitted_at']) if m['submitted_at'] else None
             m['proofImage'] = m['proof_image'] or None
@@ -122,13 +143,16 @@ def api_db(request):
 
         tickets = list(Ticket.objects.all().values(
             'id', 'title', 'description', 'ticket_type', 'priority', 'status',
-            'created_by', 'created_by_name', 'client_id', 'client_name',
+            'created_by', 'created_by_name', 'assigned_to', 'assigned_to_name',
+            'client_id', 'client_name',
             'project_id', 'project_name', 'created_at', 'admin_note'
         ))
         for t in tickets:
             t['ticketType'] = t['ticket_type']
             t['createdBy'] = t['created_by']
             t['createdByName'] = t['created_by_name']
+            t['assignedTo'] = t['assigned_to'] or ''
+            t['assignedToName'] = t['assigned_to_name'] or ''
             t['clientId'] = t['client_id']
             t['clientName'] = t['client_name']
             t['projectId'] = t['project_id']
@@ -165,6 +189,7 @@ def api_db(request):
                             user = CustomUser.objects.get(id=u['id'])
                             if 'username' in u: user.username = u['username']
                             if 'role' in u: user.role = u['role']
+                            if 'skills' in u: user.skills = u['skills'] or []
                             if 'avatar' in u: user.avatar = u['avatar']
                             if 'password' in u and u['password']:
                                 incoming_password = u['password']
@@ -217,9 +242,15 @@ def api_db(request):
                             id=c.get('id', ''),
                             client_id=c.get('clientId', ''),
                             client_name=c.get('clientName', ''),
+                            client_contact=c.get('clientContact', ''),
                             project_details=c.get('projectDetails', ''),
+                            service_scope=c.get('serviceScope', ''),
                             amount=c.get('amount', ''),
-                            date=c.get('date', '')
+                            date=c.get('date', ''),
+                            start_date=c.get('startDate', ''),
+                            end_date=c.get('endDate', ''),
+                            payment_terms=c.get('paymentTerms', ''),
+                            terms_and_conditions=c.get('termsAndConditions', '')
                         )
 
                 if 'companyInfo' in data and 'documents' in data['companyInfo']:
@@ -251,6 +282,8 @@ def api_db(request):
                             status=t.get('status', 'open'),
                             created_by=t.get('createdBy', ''),
                             created_by_name=t.get('createdByName', ''),
+                            assigned_to=t.get('assignedTo', ''),
+                            assigned_to_name=t.get('assignedToName', ''),
                             client_id=t.get('clientId', ''),
                             client_name=t.get('clientName', ''),
                             project_id=t.get('projectId', ''),
@@ -267,6 +300,8 @@ def api_db(request):
                             task_id=m.get('taskId', ''),
                             title=m.get('title', ''),
                             description=m.get('description', ''),
+                            start_date=m.get('startDate', ''),
+                            delivery_date=m.get('deliveryDate', ''),
                             deadline=m.get('deadline'),
                             status=m.get('status', 'not-started'),
                             order=m.get('order', 0),

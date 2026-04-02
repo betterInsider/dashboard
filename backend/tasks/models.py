@@ -27,6 +27,8 @@ class Milestone(models.Model):
     task_id = models.CharField(max_length=50) # Link by task id string
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
+    start_date = models.CharField(max_length=50, blank=True, null=True)
+    delivery_date = models.CharField(max_length=50, blank=True, null=True)
     deadline = models.CharField(max_length=50, blank=True, null=True)
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='not-started')
     order = models.IntegerField(default=0)
@@ -58,6 +60,8 @@ class Ticket(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open')
     created_by = models.CharField(max_length=50)
     created_by_name = models.CharField(max_length=200, blank=True, null=True)
+    assigned_to = models.CharField(max_length=50, blank=True, null=True)
+    assigned_to_name = models.CharField(max_length=200, blank=True, null=True)
     client_id = models.CharField(max_length=50, blank=True, null=True)
     client_name = models.CharField(max_length=200, blank=True, null=True)
     project_id = models.CharField(max_length=50, blank=True, null=True)
