@@ -171,6 +171,7 @@ export const Components = {
                         </div>
                     </div>
                 </div>
+
             </div>
         `;
     },
@@ -190,7 +191,7 @@ export const Components = {
         let tableRows = projects.map((p) => {
             const progress = Number(p.progress) || 0;
             const statusText = String(p.status || 'Pending');
-            const healthLabel = progress >= 75 ? 'Strong' : progress >= 40 ? 'Steady' : 'Needs support';
+            const healthLabel = progress >= 75 ? 'On Track' : progress >= 40 ? 'Watching' : 'At Risk';
             return `
             <tr>
                 <td>
@@ -209,7 +210,9 @@ export const Components = {
                 <td><span class="portfolio-health ${healthLabel.toLowerCase().replace(' ', '-')}">${healthLabel}</span></td>
                 <td>
                     <div class="action-cell">
+                        <button class="icon-btn btn-view-project" data-id="${p.id}" title="Project Details"><i class='bx bx-show'></i></button>
                         ${user.role === 'admin' ? `
+                            <button class="icon-btn btn-edit-project" data-id="${p.id}" title="Edit Project" style="color: var(--primary);"><i class='bx bx-pencil'></i></button>
                             <button class="icon-btn" title="Delete Project" onclick="window.deleteProject('${p.id}')" style="color: var(--danger);"><i class='bx bx-trash'></i></button>
                         ` : ''}
                     </div>
@@ -236,7 +239,7 @@ export const Components = {
                 </div>
                 <div class="stat-card warning">
                     <div class="stat-card-info">
-                        <h3>Needs Attention</h3>
+                        <h3>At Risk</h3>
                         <h2>${atRisk}</h2>
                     </div>
                     <div class="stat-card-icon"><i class='bx bx-error-circle'></i></div>
@@ -303,9 +306,39 @@ export const Components = {
                 </div>
                 <div class="table-container">
                     <div class="section-header">
-                        <h3>Confidence Ladder</h3>
+                        <h3>Health Definitions</h3>
                     </div>
                     <div class="project-deadline-list">
+                        <div class="deadline-item portfolio-health-item">
+                            <div>
+                                <strong>On Track</strong>
+                                <p>Progress is healthy and delivery confidence is high.</p>
+                            </div>
+                            <div class="deadline-meta">
+                                <span>Green</span>
+                                <small>75%+ completion</small>
+                            </div>
+                        </div>
+                        <div class="deadline-item portfolio-health-item">
+                            <div>
+                                <strong>Watching</strong>
+                                <p>Progress is moving, but this project needs closer follow-up.</p>
+                            </div>
+                            <div class="deadline-meta">
+                                <span>Amber</span>
+                                <small>40% to 74%</small>
+                            </div>
+                        </div>
+                        <div class="deadline-item portfolio-health-item">
+                            <div>
+                                <strong>At Risk</strong>
+                                <p>Delivery is slipping or under-supported and likely needs intervention.</p>
+                            </div>
+                            <div class="deadline-meta">
+                                <span>Red</span>
+                                <small>Below 40%</small>
+                            </div>
+                        </div>
                         ${projects.length ? projects
                             .slice()
                             .sort((a, b) => (Number(a.progress) || 0) - (Number(b.progress) || 0))
@@ -321,6 +354,289 @@ export const Components = {
                                 </div>
                             </div>
                         `).join('') : '<p style="color:var(--text-secondary);">No projects available yet.</p>'}
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    renderProjectDetailsPage(projectId) {
+        const project = AppState.getProjectById(projectId);
+        if (!project) return '<div class="table-container"><h2>Project not found.</h2></div>';
+
+        const progress = Number(project.progress) || 0;
+        const healthLabel = progress >= 75 ? 'On Track' : progress >= 40 ? 'Watching' : 'At Risk';
+        const projectTasks = DB.tasks.filter((task) => String(task.projectId) === String(project.id));
+        const taskSummary = {
+            todo: projectTasks.filter((task) => task.status === 'todo').length,
+            inProgress: projectTasks.filter((task) => task.status === 'in-progress').length,
+            done: projectTasks.filter((task) => task.status === 'done').length
+        };
+        const relatedTickets = DB.tickets.filter((ticket) => String(ticket.projectId) === String(project.id));
+
+        return `
+            <div style="display:flex; flex-direction:column; gap:24px;">
+                <div class="dashboard-grid dashboard-metrics-grid">
+                    <div class="stat-card warning">
+                        <div class="stat-card-info">
+                            <h3>Open Tickets</h3>
+                            <h2>${openCount}</h2>
+                            <p>${user.role === 'admin' ? 'Awaiting assignment or first response' : 'Still waiting on action'}</p>
+                        </div>
+                        <div class="stat-card-icon"><i class='bx bx-error-circle'></i></div>
+                    </div>
+                    <div class="stat-card info">
+                        <div class="stat-card-info">
+                            <h3>In Review</h3>
+                            <h2>${inReviewCount}</h2>
+                            <p>${user.role === 'admin' ? 'Tickets being handled now' : 'Updates are in progress'}</p>
+                        </div>
+                        <div class="stat-card-icon"><i class='bx bx-loader-circle'></i></div>
+                    </div>
+                    <div class="stat-card success">
+                        <div class="stat-card-info">
+                            <h3>Resolved</h3>
+                            <h2>${resolvedCount}</h2>
+                            <p>${user.role === 'admin' ? 'Completed support items' : 'Closed requests and fixes'}</p>
+                        </div>
+                        <div class="stat-card-icon"><i class='bx bx-check-circle'></i></div>
+                    </div>
+                </div>
+
+                <div class="dashboard-detail-grid">
+                <div class="table-container">
+                    <div class="section-header">
+                        <div>
+                            <h2><i class='bx bx-briefcase'></i> Project Details</h2>
+                            <p style="color:var(--text-secondary); margin-top:6px;">${project.name} · ${project.client || 'Unassigned client'}</p>
+                        </div>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button class="btn btn-secondary btn-sm" id="btn-back-projects"><i class='bx bx-arrow-back'></i> Back</button>
+                            ${AppState.currentUser.role === 'admin' ? `<button class="btn btn-primary btn-sm" id="btn-open-edit-project" data-id="${project.id}"><i class='bx bx-pencil'></i> Edit Project</button>` : ''}
+                        </div>
+                    </div>
+                    <div class="company-meta-grid">
+                        <div>
+                            <strong>Status</strong>
+                            <span>${project.status || 'Pending'}</span>
+                        </div>
+                        <div>
+                            <strong>Progress</strong>
+                            <span>${progress}% complete</span>
+                        </div>
+                        <div>
+                            <strong>Due Date</strong>
+                            <span>${project.dueDate || 'TBD'}</span>
+                        </div>
+                        <div>
+                            <strong>Health</strong>
+                            <span>${healthLabel}</span>
+                        </div>
+                    </div>
+                    <div style="margin-top:24px;">
+                        <h3 style="margin-bottom:10px;">Project Overview</h3>
+                        <p style="color:var(--text-secondary); line-height:1.7;">${project.description || 'No project description added yet.'}</p>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <div class="section-header">
+                        <h3>Delivery Snapshot</h3>
+                    </div>
+                    <div class="project-deadline-list">
+                        <div class="deadline-item">
+                            <div>
+                                <strong>Health Meaning</strong>
+                                <p>${healthLabel === 'On Track' ? 'Delivery is moving well and does not currently need escalation.' : healthLabel === 'Watching' ? 'Delivery is progressing, but needs attention before risk increases.' : 'Delivery confidence is low and this project needs active support.'}</p>
+                            </div>
+                            <div class="deadline-meta">
+                                <span>${healthLabel}</span>
+                                <small>${progress}% progress</small>
+                            </div>
+                        </div>
+                        <div class="deadline-item">
+                            <div>
+                                <strong>Tasks</strong>
+                                <p>${projectTasks.length} tasks linked to this project.</p>
+                            </div>
+                            <div class="deadline-meta">
+                                <span>${taskSummary.done} done</span>
+                                <small>${taskSummary.todo} todo · ${taskSummary.inProgress} in progress</small>
+                            </div>
+                        </div>
+                        <div class="deadline-item">
+                            <div>
+                                <strong>Tickets</strong>
+                                <p>Support requests and feedback connected with this project.</p>
+                            </div>
+                            <div class="deadline-meta">
+                                <span>${relatedTickets.length}</span>
+                                <small>${relatedTickets.filter((ticket) => ticket.status !== 'resolved').length} open</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    renderEditProjectPage(projectId) {
+        const project = AppState.getProjectById(projectId);
+        const clients = AppState.getClients();
+        if (!project) return '<div class="table-container"><h2>Project not found.</h2></div>';
+
+        return `
+            <div class="table-container" style="max-width: 700px; margin: 0 auto;">
+                <div class="section-header">
+                    <h2><i class='bx bx-pencil'></i> Edit Project</h2>
+                </div>
+                <form id="edit-project-form" data-id="${project.id}">
+                    <div class="input-group">
+                        <label>Project Name</label>
+                        <div class="input-wrapper">
+                            <input type="text" id="edit-project-name" required value="${project.name}">
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label>Project Description</label>
+                        <div class="input-wrapper">
+                            <textarea id="edit-project-desc" rows="4" required>${project.description || ''}</textarea>
+                        </div>
+                    </div>
+                    <div class="ticket-form-grid">
+                        <div class="input-group">
+                            <label>Client</label>
+                            <div class="input-wrapper">
+                                <select id="edit-project-client" required>
+                                    ${clients.map((client) => `<option value="${client.id}" ${client.name === project.client ? 'selected' : ''}>${client.name}</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label>Due Date</label>
+                            <div class="input-wrapper">
+                                <input type="date" id="edit-project-date" required value="${project.dueDate || ''}">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ticket-form-grid">
+                        <div class="input-group">
+                            <label>Status</label>
+                            <div class="input-wrapper">
+                                <select id="edit-project-status">
+                                    <option value="Pending" ${project.status === 'Pending' ? 'selected' : ''}>Pending</option>
+                                    <option value="In Progress" ${project.status === 'In Progress' ? 'selected' : ''}>In Progress</option>
+                                    <option value="Completed" ${project.status === 'Completed' ? 'selected' : ''}>Completed</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label>Progress (%)</label>
+                            <div class="input-wrapper">
+                                <input type="number" id="edit-project-progress" min="0" max="100" value="${Number(project.progress) || 0}">
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:15px; margin-top:30px;">
+                        <button type="button" class="btn btn-secondary btn-block" id="btn-cancel-edit-project" style="flex:1;">Cancel</button>
+                        <button type="submit" class="btn btn-primary btn-block" style="flex:2;">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        `;
+    },
+
+    renderClientDetailsPage(clientId) {
+        const client = AppState.getClientById(clientId);
+        if (!client) return '<div class="table-container"><h2>Client not found.</h2></div>';
+
+        const projects = DB.projects.filter((project) => String(project.client || '').trim().toLowerCase() === client.name.toLowerCase());
+        const contracts = DB.contracts.filter((contract) => String(contract.clientId) === String(client.id) || contract.clientName === client.name);
+
+        return `
+            <div style="display:flex; flex-direction:column; gap:24px;">
+                <div class="dashboard-grid dashboard-metrics-grid">
+                    <div class="stat-card warning">
+                        <div class="stat-card-info">
+                            <h3>Open Tickets</h3>
+                            <h2>${openCount}</h2>
+                            <p>${user.role === 'admin' ? 'Awaiting assignment or first response' : 'Still waiting on action'}</p>
+                        </div>
+                        <div class="stat-card-icon"><i class='bx bx-error-circle'></i></div>
+                    </div>
+                    <div class="stat-card info">
+                        <div class="stat-card-info">
+                            <h3>In Review</h3>
+                            <h2>${inReviewCount}</h2>
+                            <p>${user.role === 'admin' ? 'Tickets being handled now' : 'Updates are in progress'}</p>
+                        </div>
+                        <div class="stat-card-icon"><i class='bx bx-loader-circle'></i></div>
+                    </div>
+                    <div class="stat-card success">
+                        <div class="stat-card-info">
+                            <h3>Resolved</h3>
+                            <h2>${resolvedCount}</h2>
+                            <p>${user.role === 'admin' ? 'Completed support items' : 'Closed requests and fixes'}</p>
+                        </div>
+                        <div class="stat-card-icon"><i class='bx bx-check-circle'></i></div>
+                    </div>
+                </div>
+
+                <div class="dashboard-detail-grid">
+                <div class="table-container">
+                    <div class="section-header">
+                        <div>
+                            <h2><i class='bx bx-user-circle'></i> Client Details</h2>
+                            <p style="color:var(--text-secondary); margin-top:6px;">${client.name}</p>
+                        </div>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button class="btn btn-secondary btn-sm" id="btn-back-clients"><i class='bx bx-arrow-back'></i> Back</button>
+                            <button class="btn btn-danger btn-sm" id="btn-delete-client-details" data-id="${client.id}" style="background: rgba(239,68,68,0.12); color: var(--danger); border: 1px solid rgba(239,68,68,0.24);"><i class='bx bx-trash'></i> Delete Client</button>
+                        </div>
+                    </div>
+                    <div class="company-meta-grid">
+                        <div>
+                            <strong>Contact</strong>
+                            <span>${client.contact || 'No contact email saved'}</span>
+                        </div>
+                        <div>
+                            <strong>Active Projects</strong>
+                            <span>${projects.length}</span>
+                        </div>
+                        <div>
+                            <strong>Contracts</strong>
+                            <span>${contracts.length}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <div class="section-header">
+                        <h3>Linked Records</h3>
+                    </div>
+                    <div class="project-deadline-list">
+                        ${projects.length ? projects.map((project) => `
+                            <div class="deadline-item">
+                                <div>
+                                    <strong>${project.name}</strong>
+                                    <p>${project.status || 'Pending'}</p>
+                                </div>
+                                <div class="deadline-meta">
+                                    <span>${project.dueDate || 'TBD'}</span>
+                                    <small>${Number(project.progress) || 0}% progress</small>
+                                </div>
+                            </div>
+                        `).join('') : '<p style="color:var(--text-secondary);">No active projects linked to this client.</p>'}
+                        ${contracts.length ? contracts.map((contract) => `
+                            <div class="deadline-item">
+                                <div>
+                                    <strong>${contract.projectDetails}</strong>
+                                    <p>${contract.clientContact || client.contact || 'No contact email available'}</p>
+                                </div>
+                                <div class="deadline-meta">
+                                    <span>$${contract.amount}</span>
+                                    <small>${contract.date || 'No contract date'}</small>
+                                </div>
+                            </div>
+                        `).join('') : '<p style="color:var(--text-secondary);">No contracts generated for this client.</p>'}
                     </div>
                 </div>
             </div>
@@ -417,28 +733,67 @@ export const Components = {
     // ---- Skills & Roles ----
     renderSkills() {
         const user = AppState.currentUser;
+        const teamMembers = DB.users.filter((member) => member.id !== 'u1');
+        const skillsManager = user.role === 'admin' ? `
+            <div class="table-container" style="margin-top: 24px; padding: 0;">
+                <div class="section-header" style="padding: 24px 24px 0;">
+                    <div>
+                        <h3>Employee Skills Manager</h3>
+                        <p style="color: var(--text-secondary); font-size: 13px; margin-top: 6px;">Add or update employee skills here. Use commas to separate multiple skills.</p>
+                    </div>
+                    <button class="btn btn-primary btn-sm" id="btn-save-skill-updates"><i class='bx bx-save'></i> Save Skill Changes</button>
+                </div>
+                <div style="padding: 0 24px 24px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Employee</th>
+                                <th>Skills</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${teamMembers.map((member) => `
+                                <tr>
+                                    <td>
+                                        <strong>${member.name}</strong><br>
+                                        <small style="color:var(--text-secondary)">${member.username}</small><br>
+                                        <small style="color:var(--text-secondary); text-transform: uppercase; letter-spacing: 0.8px;">${member.role}</small>
+                                    </td>
+                                    <td>
+                                        <input type="text" class="employee-skills-input" data-id="${member.id}" value="${(member.skills || []).join(', ')}" placeholder="e.g. Backend Developer, QA, Research" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-main); color: var(--text-primary);">
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        ` : '';
         
         return `
-            <div class="table-container" style="max-width: 600px;">
-                <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 30px;">
-                    <img src="${user.avatar}" alt="" style="width: 80px; height: 80px; border-radius: 12px;">
-                    <div>
-                        <h2 style="font-size: 24px; margin-bottom: 5px;">${user.name}</h2>
-                        <span style="color: var(--text-secondary); text-transform: uppercase; font-size: 12px; font-weight: 700; letter-spacing: 1px;">${user.role}</span>
+            <div>
+                <div class="table-container" style="max-width: 600px;">
+                    <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 30px;">
+                        <img src="${user.avatar}" alt="" style="width: 80px; height: 80px; border-radius: 12px;">
+                        <div>
+                            <h2 style="font-size: 24px; margin-bottom: 5px;">${user.name}</h2>
+                            <span style="color: var(--text-secondary); text-transform: uppercase; font-size: 12px; font-weight: 700; letter-spacing: 1px;">${user.role}</span>
+                        </div>
                     </div>
+                    
+                    <h3 style="margin-bottom: 15px;">Your Skills</h3>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 30px;">
+                        ${user.skills.map(s => `<span style="padding: 8px 16px; background: rgba(92, 60, 252, 0.1); color: var(--primary); border-radius: 20px; font-weight: 600;">${s}</span>`).join('')}
+                    </div>
+                    
+                    <h3 style="margin-bottom: 15px;">Role Capabilities</h3>
+                    <ul style="color: var(--text-secondary); padding-left: 20px; line-height: 1.8;">
+                        ${user.role === 'admin' 
+                            ? '<li>Create and manage client contracts.</li><li>Assign tasks to employees globally.</li><li>View administrative progress insights.</li><li>Access all internal platform tools.</li>' 
+                            : '<li>View assigned projects and project timelines.</li><li>Manage tasks via Kanban boards.</li><li>Track personal productivity progress.</li><li>Access important company documents.</li>'}
+                    </ul>
                 </div>
-                
-                <h3 style="margin-bottom: 15px;">Your Skills</h3>
-                <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 30px;">
-                    ${user.skills.map(s => `<span style="padding: 8px 16px; background: rgba(92, 60, 252, 0.1); color: var(--primary); border-radius: 20px; font-weight: 600;">${s}</span>`).join('')}
-                </div>
-                
-                <h3 style="margin-bottom: 15px;">Role Capabilities</h3>
-                <ul style="color: var(--text-secondary); padding-left: 20px; line-height: 1.8;">
-                    ${user.role === 'admin' 
-                        ? '<li>Create and manage client contracts.</li><li>Assign tasks to employees globally.</li><li>View administrative progress insights.</li><li>Access all internal platform tools.</li>' 
-                        : '<li>View assigned projects and project timelines.</li><li>Manage tasks via Kanban boards.</li><li>Track personal productivity progress.</li><li>Access important company documents.</li>'}
-                </ul>
+                ${skillsManager}
             </div>
         `;
     },
@@ -447,6 +802,11 @@ export const Components = {
     renderAboutCompany() {
         const info = DB.companyInfo;
         const user = AppState.currentUser;
+        const creator = info.creatorProfile || {
+            name: 'Krishna Singh',
+            experience: 'Worked at TCS Bengalore',
+            title: 'Fullstack Developer'
+        };
         const values = info.values || [
             'Clarity in communication and delivery updates',
             'Creative quality backed by execution discipline',
@@ -535,6 +895,16 @@ export const Components = {
                             ${values.map((item) => `<li>${item}</li>`).join('')}
                         </ul>
                     </div>
+                    <div class="info-card">
+                        <h2><i class='bx bx-code-alt'></i> Dashboard Creator</h2>
+                        <div class="leadership-list">
+                            <div class="leader-card">
+                                <strong>${creator.name}</strong>
+                                <span>${creator.experience}</span>
+                                <span>${creator.title}</span>
+                            </div>
+                        </div>
+                    </div>
                     <div class="info-card" id="important-documents">
                         <h2><i class='bx bx-folder-open'></i> Important Documents</h2>
                         <p style="margin-bottom: 20px; font-size: 13px;">View and download essential internal resources and draft references.</p>
@@ -559,6 +929,7 @@ export const Components = {
                     <td>${DB.projects.filter((project) => project.client === c.name).length}</td>
                     <td>
                         <div class="action-cell">
+                            <button class="icon-btn btn-view-client" data-id="${c.id}" title="Client Details"><i class='bx bx-show'></i></button>
                             <button class="icon-btn" title="Delete Client" style="color: var(--danger)" onclick="window.deleteClient('${c.id}')"><i class='bx bx-trash'></i></button>
                         </div>
                     </td>
@@ -725,17 +1096,80 @@ export const Components = {
     },
 
     renderTickets() {
+        return this.renderHelpdesk();
+    },
+
+    renderHelpdesk() {
         const user = AppState.currentUser;
-        const tickets = user.role === 'admin'
+        const tickets = (user.role === 'admin'
             ? DB.tickets
-            : DB.tickets.filter((ticket) => ticket.createdBy === user.id);
+            : DB.tickets.filter((ticket) => ticket.createdBy === user.id || ticket.assignedTo === user.id))
+            .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+        const recentTickets = tickets.slice(0, 5);
+        const openCount = tickets.filter((ticket) => ticket.status === 'open').length;
+        const inReviewCount = tickets.filter((ticket) => ticket.status === 'in-review').length;
+        const resolvedCount = tickets.filter((ticket) => ticket.status === 'resolved').length;
 
         return `
             <div class="dashboard-detail-grid">
                 <div class="table-container">
                     <div class="section-header">
-                        <h2>${user.role === 'admin' ? 'Employee Tickets' : 'My Tickets'}</h2>
-                        <button class="btn btn-primary btn-sm" id="btn-create-ticket"><i class='bx bx-message-square-add'></i> Raise Ticket</button>
+                        <h2><i class='bx bx-support'></i> ${user.role === 'admin' ? 'Helpdesk Assignment Center' : 'Employee Helpdesk'}</h2>
+                        <button class="btn btn-primary btn-sm" id="btn-create-ticket"><i class='bx bx-message-square-add'></i> ${user.role === 'admin' ? 'Assign Ticket' : 'Raise Ticket'}</button>
+                    </div>
+                    <div class="project-overview-card" style="margin-bottom:20px;">
+                        <div>
+                            <span class="company-kicker">Support Channel</span>
+                            <h2>${user.role === 'admin' ? 'Assign incoming helpdesk requests to the right employee and keep execution moving.' : 'Raise blockers, access issues, process feedback, or project suggestions from one place.'}</h2>
+                        </div>
+                        <p>${user.role === 'admin' ? 'Use this tab to route support work, assign ownership, and monitor recent helpdesk activity across the team.' : 'Use this tab when something needs attention from admins or when you want to suggest an improvement for the company or a specific project.'}</p>
+                    </div>
+                    <div class="project-deadline-list">
+                        <div class="deadline-item">
+                            <div>
+                                <strong>${user.role === 'admin' ? 'Assign Ownership' : 'Company Issues'}</strong>
+                                <p>${user.role === 'admin' ? 'Choose the employee who should investigate, respond, or coordinate the next action.' : 'Access problems, HR process pain points, internal tooling requests, or policy suggestions.'}</p>
+                            </div>
+                            <div class="deadline-meta">
+                                <span>${user.role === 'admin' ? 'Employee mapped' : 'General'}</span>
+                                <small>${user.role === 'admin' ? 'Every ticket should have an owner' : 'No project required'}</small>
+                            </div>
+                        </div>
+                        <div class="deadline-item">
+                            <div>
+                                <strong>${user.role === 'admin' ? 'Delivery Context' : 'Project Issues'}</strong>
+                                <p>${user.role === 'admin' ? 'Link the ticket to the right client or project so the assignee has context from day one.' : 'Client blockers, delivery confusion, missing approvals, or timeline risks.'}</p>
+                            </div>
+                            <div class="deadline-meta">
+                                <span>${user.role === 'admin' ? 'Context attached' : 'Project linked'}</span>
+                                <small>${user.role === 'admin' ? 'Client/project links speed up resolution' : 'Add client/project when possible'}</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <div class="section-header">
+                        <h3>${user.role === 'admin' ? 'Recent Tickets' : 'My Recent Tickets'}</h3>
+                    </div>
+                    <div class="project-deadline-list">
+                        ${recentTickets.length ? recentTickets.map((ticket) => `
+                            <div class="deadline-item">
+                                <div>
+                                    <strong>${ticket.title}</strong>
+                                    <p>${ticket.projectName || ticket.clientName || 'General company support'}${ticket.assignedToName ? ` · ${ticket.assignedToName}` : ''}</p>
+                                </div>
+                                <div class="deadline-meta">
+                                    <span>${ticket.status}</span>
+                                    <small>${ticket.priority} priority</small>
+                                </div>
+                            </div>
+                        `).join('') : '<p style="color:var(--text-secondary);">No tickets have been raised yet.</p>'}
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <div class="section-header">
+                        <h2>${user.role === 'admin' ? 'All Helpdesk Tickets' : 'My Helpdesk Tickets'}</h2>
                     </div>
                     <table>
                         <thead>
@@ -746,6 +1180,7 @@ export const Components = {
                                 <th>Status</th>
                                 <th>Project / Client</th>
                                 <th>Raised By</th>
+                                <th>Assigned To</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
@@ -761,6 +1196,7 @@ export const Components = {
                                     <td><span class="status ${ticket.status === 'resolved' ? 'done' : ticket.status === 'in-review' ? 'in-progress' : 'pending'}">${ticket.status}</span></td>
                                     <td>${ticket.projectName || ticket.clientName || 'General'}</td>
                                     <td>${ticket.createdByName || 'Unknown'}<br><small style="color:var(--text-secondary)">${ticket.createdAt || ''}</small></td>
+                                    <td>${ticket.assignedToName || 'Unassigned'}</td>
                                     <td>
                                         ${user.role === 'admin' ? `
                                             <select class="ticket-status-select" data-id="${ticket.id}">
@@ -773,89 +1209,23 @@ export const Components = {
                                 </tr>
                             `).join('') : `
                                 <tr>
-                                    <td colspan="7" style="text-align:center; color:var(--text-secondary); padding:24px;">No tickets raised yet.</td>
+                                    <td colspan="8" style="text-align:center; color:var(--text-secondary); padding:24px;">No helpdesk tickets raised yet.</td>
                                 </tr>
                             `}
                         </tbody>
                     </table>
                 </div>
+
                 <div class="table-container">
                     <div class="section-header">
-                        <h3>Ticket Guidelines</h3>
+                        <h3>Helpdesk Guidelines</h3>
                     </div>
                     <ul class="company-detail-list">
                         <li>Use <strong>Issue</strong> for blockers, bugs, access problems, or delivery risks.</li>
                         <li>Use <strong>Suggestion</strong> for process improvements, tooling ideas, or client/project enhancements.</li>
                         <li>Attach the related client or project whenever possible so admins can route the request faster.</li>
-                        <li>Admins can move tickets through open, in review, and resolved states directly from this page.</li>
+                        <li>Admins can assign tickets to employees and move tickets through open, in review, and resolved states directly from this page.</li>
                     </ul>
-                </div>
-            </div>
-        `;
-    },
-
-    renderHelpdesk() {
-        const user = AppState.currentUser;
-        const recentTickets = (user.role === 'admin'
-            ? DB.tickets
-            : DB.tickets.filter((ticket) => ticket.createdBy === user.id))
-            .slice(0, 5);
-
-        return `
-            <div class="dashboard-detail-grid">
-                <div class="table-container">
-                    <div class="section-header">
-                        <h2><i class='bx bx-support'></i> Employee Helpdesk</h2>
-                        <button class="btn btn-primary btn-sm" id="btn-create-ticket"><i class='bx bx-message-square-add'></i> Raise Ticket</button>
-                    </div>
-                    <div class="project-overview-card" style="margin-bottom:20px;">
-                        <div>
-                            <span class="company-kicker">Support Channel</span>
-                            <h2>Raise blockers, access issues, process feedback, or project suggestions from one place.</h2>
-                        </div>
-                        <p>Use this tab when something needs attention from admins or when you want to suggest an improvement for the company or a specific project.</p>
-                    </div>
-                    <div class="project-deadline-list">
-                        <div class="deadline-item">
-                            <div>
-                                <strong>Company Issues</strong>
-                                <p>Access problems, HR process pain points, internal tooling requests, or policy suggestions.</p>
-                            </div>
-                            <div class="deadline-meta">
-                                <span>General</span>
-                                <small>No project required</small>
-                            </div>
-                        </div>
-                        <div class="deadline-item">
-                            <div>
-                                <strong>Project Issues</strong>
-                                <p>Client blockers, delivery confusion, missing approvals, or timeline risks.</p>
-                            </div>
-                            <div class="deadline-meta">
-                                <span>Project linked</span>
-                                <small>Add client/project when possible</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="table-container">
-                    <div class="section-header">
-                        <h3>${user.role === 'admin' ? 'Recent Tickets' : 'My Recent Tickets'}</h3>
-                    </div>
-                    <div class="project-deadline-list">
-                        ${recentTickets.length ? recentTickets.map((ticket) => `
-                            <div class="deadline-item">
-                                <div>
-                                    <strong>${ticket.title}</strong>
-                                    <p>${ticket.projectName || ticket.clientName || 'General company support'}</p>
-                                </div>
-                                <div class="deadline-meta">
-                                    <span>${ticket.status}</span>
-                                    <small>${ticket.priority} priority</small>
-                                </div>
-                            </div>
-                        `).join('') : '<p style="color:var(--text-secondary);">No tickets have been raised yet.</p>'}
-                    </div>
                 </div>
             </div>
         `;
@@ -868,7 +1238,7 @@ export const Components = {
             ? [`<option value="" disabled selected>Select a client</option>`, ...clients.map((client) => `<option value="${client.id}">${client.name}</option>`)].join('')
             : `<option value="" disabled selected>No clients available</option>`;
         return `
-            <div class="table-container" style="max-width: 600px; margin: 0 auto;">
+            <div class="table-container" style="max-width: 760px; margin: 0 auto;">
                 <div class="section-header">
                     <h2><i class='bx bx-file-blank'></i> Create New Contract</h2>
                 </div>
@@ -882,9 +1252,35 @@ export const Components = {
                         </div>
                     </div>
                     <div class="input-group">
+                        <label>Client Contact Email</label>
+                        <div class="input-wrapper">
+                            <input type="email" id="fc-contact" placeholder="Auto-filled from client record" readonly>
+                        </div>
+                    </div>
+                    <div class="input-group">
                         <label>Project Details</label>
                         <div class="input-wrapper">
                             <input type="text" id="fc-project" required placeholder="e.g. Landing Page Design">
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label>Service Scope</label>
+                        <div class="input-wrapper">
+                            <textarea id="fc-scope" rows="4" required placeholder="Describe the work, deliverables, and major client commitments."></textarea>
+                        </div>
+                    </div>
+                    <div class="ticket-form-grid">
+                        <div class="input-group">
+                            <label>Contract Start Date</label>
+                            <div class="input-wrapper">
+                                <input type="date" id="fc-start-date" required>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label>Contract End Date</label>
+                            <div class="input-wrapper">
+                                <input type="date" id="fc-end-date" required>
+                            </div>
                         </div>
                     </div>
                     <div class="input-group">
@@ -895,17 +1291,27 @@ export const Components = {
                     </div>
                     <div class="input-group">
                         <label>Contract Date</label>
-                        <div class="input-wrapper date-input-wrapper">
+                        <div class="input-wrapper">
                             <input type="date" id="fc-date" required>
-                            <button type="button" class="date-picker-trigger" id="fc-date-trigger" aria-label="Open calendar">
-                                <i class='bx bx-calendar'></i>
-                            </button>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label>Payment Terms</label>
+                        <div class="input-wrapper">
+                            <textarea id="fc-payment-terms" rows="3" required placeholder="Example: 50% advance, 50% before final handoff."></textarea>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label>Terms and Conditions</label>
+                        <div class="input-wrapper">
+                            <textarea id="fc-terms" rows="4" required placeholder="Include revision limits, timelines, approval expectations, and liability notes."></textarea>
                         </div>
                     </div>
                     <div style="display: flex; gap: 15px; margin-top: 30px;">
                         <button type="button" class="btn btn-secondary btn-block" id="btn-cancel-contract" style="flex: 1;">Cancel</button>
-                        <button type="submit" class="btn btn-primary btn-block" style="flex: 2;"><i class='bx bx-file-blank'></i> Generate Contract</button>
+                        <button type="submit" class="btn btn-primary btn-block" style="flex: 2;" ${clients.length ? '' : 'disabled'}><i class='bx bx-file-blank'></i> Generate Contract</button>
                     </div>
+                    ${clients.length ? '' : '<p style="margin-top:14px; color:var(--danger); font-size:13px;">Create a client first before generating a contract.</p>'}
                 </form>
             </div>
         `;
@@ -927,6 +1333,7 @@ export const Components = {
                     <h2><i class='bx bx-briefcase'></i> Create New Project</h2>
                 </div>
                 <form id="project-form">
+                    ${uniqueClients.length ? '' : '<div style="margin-bottom:18px; padding:12px 14px; border-radius:12px; background: rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); color: var(--danger); font-size:13px;">An active client is required before a project can be created.</div>'}
                     <div class="input-group">
                         <label>Project Name</label>
                         <div class="input-wrapper">
@@ -958,7 +1365,7 @@ export const Components = {
                     </div>
                     <div style="display: flex; gap: 15px; margin-top: 30px;">
                         <button type="button" class="btn btn-secondary btn-block" id="btn-cancel-project" style="flex: 1;">Cancel</button>
-                        <button type="submit" class="btn btn-primary btn-block" style="flex: 2;">Create Project</button>
+                        <button type="submit" class="btn btn-primary btn-block" style="flex: 2;" ${uniqueClients.length ? '' : 'disabled'}>Create Project</button>
                     </div>
                 </form>
             </div>
@@ -966,12 +1373,14 @@ export const Components = {
     },
 
     renderCreateTicketPage() {
+        const user = AppState.currentUser;
+        const employees = DB.users.filter((member) => member.role === 'employee');
         const clients = AppState.getClients();
         const projects = AppState.getProjectsCatalog();
         return `
             <div class="table-container" style="max-width: 700px; margin: 0 auto;">
                 <div class="section-header">
-                    <h2><i class='bx bx-help-circle'></i> Raise Ticket</h2>
+                    <h2><i class='bx bx-help-circle'></i> ${user.role === 'admin' ? 'Assign Helpdesk Ticket' : 'Raise Ticket'}</h2>
                 </div>
                 <form id="ticket-form">
                     <div class="input-group">
@@ -1007,6 +1416,17 @@ export const Components = {
                             </div>
                         </div>
                     </div>
+                    ${user.role === 'admin' ? `
+                        <div class="input-group">
+                            <label>Assign To Employee</label>
+                            <div class="input-wrapper">
+                                <select id="ticket-assignee" required>
+                                    <option value="" disabled selected>Select employee</option>
+                                    ${employees.map((employee) => `<option value="${employee.id}">${employee.name}</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+                    ` : ''}
                     <div class="ticket-form-grid">
                         <div class="input-group">
                             <label>Related Client</label>
@@ -1029,7 +1449,7 @@ export const Components = {
                     </div>
                     <div style="display: flex; gap: 15px; margin-top: 30px;">
                         <button type="button" class="btn btn-secondary btn-block" id="btn-cancel-ticket" style="flex: 1;">Cancel</button>
-                        <button type="submit" class="btn btn-primary btn-block" style="flex: 2;">Submit Ticket</button>
+                        <button type="submit" class="btn btn-primary btn-block" style="flex: 2;">${user.role === 'admin' ? 'Assign Ticket' : 'Submit Ticket'}</button>
                     </div>
                 </form>
             </div>
@@ -1090,6 +1510,7 @@ export const Components = {
                                 <i class='bx bx-plus'></i> Add Milestone
                             </button>
                         </h3>
+                        <p style="margin-bottom: 12px; font-size: 12px; color: var(--text-secondary);">Each milestone should include a start date and a delivery date for better tracking.</p>
                         <div id="milestones-container">
                             <!-- Dynamically added milestones will go here -->
                         </div>
@@ -1209,9 +1630,10 @@ export const Components = {
 
                         ${AppState.currentUser.role === 'admin' ? `
                             <div id="inline-milestone-form" style="display:none; margin-bottom: 18px; padding: 14px; border-radius: 12px; border: 1px dashed var(--border); background: rgba(255,255,255,0.03);">
-                                <div style="display:grid; grid-template-columns: 1.2fr 1fr; gap: 10px; margin-bottom: 10px;">
+                                <div style="display:grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 10px; margin-bottom: 10px;">
                                     <input type="text" id="inline-ms-title" placeholder="Milestone title" style="padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg-main); color:var(--text-primary);">
-                                    <input type="date" id="inline-ms-deadline" style="padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg-main); color:var(--text-primary);">
+                                    <input type="date" id="inline-ms-start-date" style="padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg-main); color:var(--text-primary);">
+                                    <input type="date" id="inline-ms-delivery-date" style="padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg-main); color:var(--text-primary);">
                                 </div>
                                 <textarea id="inline-ms-desc" rows="3" placeholder="Milestone description" style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg-main); color:var(--text-primary); font-family:inherit;"></textarea>
                                 <div style="display:flex; gap:10px; margin-top: 12px;">
@@ -1301,7 +1723,12 @@ export const Components = {
                                                     <span style="font-size: 10px; padding: 2px 8px; border-radius: 4px; background: ${statusColor}1A; color: ${statusColor}; border: 1px solid ${statusColor}4D; font-weight: 600;">${statusText}</span>
                                                 </div>
                                                 <p style="font-size: 13px; color: var(--text-secondary); margin: 5px 0;">${m.description || 'No description provided.'}</p>
-                                                ${m.deadline ? `<p style="font-size: 11px; color: var(--text-secondary);"><i class='bx bx-calendar-event'></i> Deadline: ${m.deadline}</p>` : ''}
+                                                ${(m.startDate || m.deliveryDate) ? `
+                                                    <p style="font-size: 11px; color: var(--text-secondary); display:flex; gap:12px; flex-wrap:wrap;">
+                                                        ${m.startDate ? `<span><i class='bx bx-calendar'></i> Start: ${m.startDate}</span>` : ''}
+                                                        ${m.deliveryDate ? `<span><i class='bx bx-calendar-event'></i> Delivery: ${m.deliveryDate}</span>` : ''}
+                                                    </p>
+                                                ` : ''}
                                                 ${m.submittedAt ? `<p style="font-size: 11px; color: var(--text-secondary); margin-top: 6px;"><i class='bx bx-time-five'></i> Submitted: ${m.submittedAt}</p>` : ''}
                                                 ${m.adminFeedback ? `<div style="margin-top:10px; padding: 10px; background: rgba(239, 68, 68, 0.05); border-radius: 6px; font-size: 12px; color: #ef4444;"><strong>Feedback:</strong> ${m.adminFeedback}</div>` : ''}
                                                 ${actions}

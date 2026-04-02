@@ -29,7 +29,12 @@ export const DB = {
         contactEmail: 'betterinside@admin',
         documents: [],
         companySnapshot: [],
-        values: []
+        values: [],
+        creatorProfile: {
+            name: 'Krishna Singh',
+            experience: 'Worked at TCS Bengalore',
+            title: 'Fullstack Developer'
+        }
     },
     milestones: [],
     tickets: []
@@ -38,9 +43,26 @@ export const DB = {
 // State Management Wrapper
 export const AppState = {
     currentUser: null,
+    activeViewTaskId: null,
+    activeViewProjectId: null,
+    activeViewClientId: null,
 
     normalizeDB() {
         DB.clients = this.getClients();
+        DB.contracts = (DB.contracts || []).map((contract) => ({
+            ...contract,
+            clientId: contract.clientId || contract.client_id || '',
+            clientName: String(contract.clientName || contract.client_name || '').trim(),
+            clientContact: contract.clientContact || contract.client_contact || '',
+            projectDetails: String(contract.projectDetails || contract.project_details || '').trim(),
+            serviceScope: contract.serviceScope || contract.service_scope || '',
+            amount: contract.amount || '',
+            date: contract.date || '',
+            startDate: contract.startDate || contract.start_date || '',
+            endDate: contract.endDate || contract.end_date || '',
+            paymentTerms: contract.paymentTerms || contract.payment_terms || '',
+            termsAndConditions: contract.termsAndConditions || contract.terms_and_conditions || ''
+        })).filter((contract) => contract.clientName && contract.projectDetails);
         DB.projects = DB.projects.map((project) => ({
             ...project,
             name: String(project.name || '').trim(),
@@ -51,6 +73,37 @@ export const AppState = {
             progress: Number(project.progress) || 0,
             team: Array.isArray(project.team) ? project.team : []
         })).filter((project) => project.name);
+        DB.milestones = (DB.milestones || []).map((milestone) => ({
+            ...milestone,
+            taskId: String(milestone.taskId || milestone.task_id || ''),
+            title: String(milestone.title || '').trim(),
+            description: milestone.description || '',
+            startDate: milestone.startDate || milestone.start_date || '',
+            deliveryDate: milestone.deliveryDate || milestone.delivery_date || milestone.deadline || '',
+            deadline: milestone.deliveryDate || milestone.delivery_date || milestone.deadline || '',
+            status: milestone.status || 'not-started',
+            adminFeedback: milestone.adminFeedback || milestone.admin_feedback || '',
+            submittedAt: milestone.submittedAt || milestone.submitted_at || null,
+            proofImage: milestone.proofImage || milestone.proof_image || null,
+            proofName: milestone.proofName || milestone.proof_name || '',
+            submissionNote: milestone.submissionNote || milestone.submission_note || ''
+        })).filter((milestone) => milestone.taskId && milestone.title);
+        DB.tickets = (DB.tickets || []).map((ticket) => ({
+            ...ticket,
+            ticketType: ticket.ticketType || ticket.ticket_type || 'issue',
+            priority: ticket.priority || 'medium',
+            status: ticket.status || 'open',
+            createdBy: ticket.createdBy || ticket.created_by || '',
+            createdByName: ticket.createdByName || ticket.created_by_name || '',
+            assignedTo: ticket.assignedTo || ticket.assigned_to || '',
+            assignedToName: ticket.assignedToName || ticket.assigned_to_name || '',
+            clientId: ticket.clientId || ticket.client_id || '',
+            clientName: ticket.clientName || ticket.client_name || '',
+            projectId: ticket.projectId || ticket.project_id || '',
+            projectName: ticket.projectName || ticket.project_name || '',
+            createdAt: ticket.createdAt || ticket.created_at || '',
+            adminNote: ticket.adminNote || ticket.admin_note || ''
+        })).filter((ticket) => String(ticket.title || '').trim());
 
         DB.notifications = DB.notifications
             .map((notification, index) => ({
@@ -86,6 +139,11 @@ export const AppState = {
             documents: [],
             companySnapshot: [],
             values: [],
+            creatorProfile: {
+                name: 'Krishna Singh',
+                experience: 'Worked at TCS Bengalore',
+                title: 'Fullstack Developer'
+            },
             ...(DB.companyInfo || {})
         };
     },
@@ -274,6 +332,124 @@ export const AppState = {
             .sort((a, b) => a.name.localeCompare(b.name));
     },
 
+    getProjectById(projectId) {
+        return DB.projects.find((project) => String(project.id) === String(projectId)) || null;
+    },
+
+    updateProject(projectId, updates) {
+        const project = this.getProjectById(projectId);
+        if (!project) {
+            return { success: false, message: 'Project not found.' };
+        }
+
+        if (updates.clientId !== undefined) {
+            const client = this.getClientById(updates.clientId);
+            if (!client) {
+                return { success: false, message: 'Please select a valid active client.' };
+            }
+            project.client = client.name;
+        }
+
+        if (updates.name !== undefined) project.name = String(updates.name || '').trim();
+        if (updates.description !== undefined) project.description = String(updates.description || '').trim();
+        if (updates.status !== undefined) project.status = updates.status || 'Pending';
+        if (updates.dueDate !== undefined) project.dueDate = updates.dueDate || '';
+        if (updates.progress !== undefined) project.progress = Math.max(0, Math.min(100, Number(updates.progress) || 0));
+
+        if (!project.name) {
+            return { success: false, message: 'Project name is required.' };
+        }
+
+        this.saveDB();
+        return { success: true, project };
+    },
+
+    searchWorkspace(query) {
+        const term = String(query || '').trim().toLowerCase();
+        if (!term) return [];
+
+        const visibleProjects = this.getProjectsForUser(this.currentUser?.id || '');
+        const visibleTasks = this.getTasksForUser(this.currentUser?.id || '');
+        const visibleTickets = this.currentUser?.role === 'admin'
+            ? DB.tickets
+            : DB.tickets.filter((ticket) =>
+                String(ticket.createdBy) === String(this.currentUser?.id) ||
+                String(ticket.assignedTo) === String(this.currentUser?.id)
+            );
+        const results = [];
+
+        const pushResult = (result) => {
+            if (results.length < 8) results.push(result);
+        };
+
+        this.getClients().forEach((client) => {
+            const haystack = `${client.name} ${client.contact}`.toLowerCase();
+            if (haystack.includes(term) && this.currentUser?.role === 'admin') {
+                pushResult({
+                    type: 'client',
+                    id: client.id,
+                    title: client.name,
+                    subtitle: client.contact || 'Client record',
+                    routeName: 'Clients'
+                });
+            }
+        });
+
+        visibleProjects.forEach((project) => {
+            const haystack = `${project.name} ${project.client} ${project.description} ${project.status}`.toLowerCase();
+            if (haystack.includes(term)) {
+                pushResult({
+                    type: 'project',
+                    id: project.id,
+                    title: project.name,
+                    subtitle: `${project.client || 'No client'} · ${project.status || 'Pending'}`,
+                    routeName: 'Projects'
+                });
+            }
+        });
+
+        visibleTasks.forEach((task) => {
+            const haystack = `${task.title} ${task.description} ${task.priority} ${task.status}`.toLowerCase();
+            if (haystack.includes(term)) {
+                pushResult({
+                    type: 'task',
+                    id: task.id,
+                    title: task.title,
+                    subtitle: `${task.priority} priority · ${task.status}`,
+                    routeName: 'Tasks Allotted'
+                });
+            }
+        });
+
+        visibleTickets.forEach((ticket) => {
+            const haystack = `${ticket.title} ${ticket.description} ${ticket.clientName} ${ticket.projectName} ${ticket.ticketType} ${ticket.status}`.toLowerCase();
+            if (haystack.includes(term)) {
+                pushResult({
+                    type: 'ticket',
+                    id: ticket.id,
+                    title: ticket.title,
+                    subtitle: `${ticket.ticketType} · ${ticket.status}`,
+                    routeName: 'Helpdesk'
+                });
+            }
+        });
+
+        DB.contracts.forEach((contract) => {
+            const haystack = `${contract.clientName} ${contract.projectDetails} ${contract.clientContact}`.toLowerCase();
+            if (haystack.includes(term) && this.currentUser?.role === 'admin') {
+                pushResult({
+                    type: 'contract',
+                    id: contract.id,
+                    title: contract.projectDetails,
+                    subtitle: `${contract.clientName} · Contract`,
+                    routeName: 'Clients'
+                });
+            }
+        });
+
+        return results;
+    },
+
     getMilestonesForTask(taskId) {
         return DB.milestones.filter(m => String(m.taskId) === String(taskId)).sort((a, b) => a.order - b.order);
     },
@@ -305,14 +481,16 @@ export const AppState = {
         }
     },
 
-    addMilestoneToTask(taskId, title, description, deadline) {
+    addMilestoneToTask(taskId, title, description, startDate, deliveryDate) {
         const existing = this.getMilestonesForTask(taskId);
         const newMilestone = {
             id: 'm' + Date.now(),
             taskId: String(taskId),
             title,
             description: description || '',
-            deadline: deadline || '',
+            startDate: startDate || '',
+            deliveryDate: deliveryDate || '',
+            deadline: deliveryDate || '',
             order: existing.length,
             status: 'not-started',
             adminFeedback: '',
@@ -370,42 +548,53 @@ export const AppState = {
 
     deleteClient(clientId) {
         const client = this.getClientById(clientId);
-        DB.clients = DB.clients.filter((item) => String(item.id) !== String(clientId));
-
-        if (client) {
-            DB.contracts = DB.contracts.filter((contract) =>
-                String(contract.clientId) !== String(clientId) && contract.clientName !== client.name
-            );
-
-            DB.tickets = DB.tickets.map((ticket) => {
-                if (String(ticket.clientId) !== String(clientId)) return ticket;
-                return {
-                    ...ticket,
-                    clientId: '',
-                    clientName: ''
-                };
-            });
-
-            DB.projects = DB.projects.map((project) => {
-                if (project.client !== client.name) return project;
-                return {
-                    ...project,
-                    client: 'Internal Delivery'
-                };
-            });
+        if (!client) {
+            return { success: false, message: 'Client not found.' };
         }
 
+        const linkedProjects = DB.projects.filter((project) => String(project.client || '').trim().toLowerCase() === client.name.toLowerCase());
+        if (linkedProjects.length) {
+            return {
+                success: false,
+                blocked: true,
+                message: 'This client is still linked to active projects.',
+                projects: linkedProjects
+            };
+        }
+
+        DB.clients = DB.clients.filter((item) => String(item.id) !== String(clientId));
+
+        DB.contracts = DB.contracts.filter((contract) =>
+            String(contract.clientId) !== String(clientId) && contract.clientName !== client.name
+        );
+
+        DB.tickets = DB.tickets.map((ticket) => {
+            if (String(ticket.clientId) !== String(clientId)) return ticket;
+            return {
+                ...ticket,
+                clientId: '',
+                clientName: ''
+            };
+        });
+
         this.saveDB();
+        return { success: true, client };
     },
 
-    addContract(clientName, projectDetails, amount, date, clientId = '') {
+    addContract(payload) {
         const newContract = {
             id: 'con' + Date.now(),
-            clientId: clientId || 'c_temp',
-            clientName,
-            projectDetails,
-            amount,
-            date
+            clientId: payload.clientId || 'c_temp',
+            clientName: payload.clientName,
+            clientContact: payload.clientContact || '',
+            projectDetails: payload.projectDetails,
+            serviceScope: payload.serviceScope || '',
+            amount: payload.amount,
+            date: payload.date,
+            startDate: payload.startDate || '',
+            endDate: payload.endDate || '',
+            paymentTerms: payload.paymentTerms || '',
+            termsAndConditions: payload.termsAndConditions || ''
         };
         DB.contracts.push(newContract);
         this.saveDB();
@@ -419,11 +608,14 @@ export const AppState = {
 
     addProject(name, clientId, dueDate, description) {
         const client = this.getClientById(clientId) || DB.clients.find(c => c.id === clientId || c.name === clientId);
+        if (!client) {
+            return { success: false, message: 'A valid client is required before creating a project.' };
+        }
         const newProject = {
             id: 'p' + Date.now(),
             name: name,
             description: description || '',
-            client: client ? client.name : 'Internal Delivery',
+            client: client.name,
             status: 'Pending',
             dueDate: dueDate,
             progress: 0,
@@ -431,11 +623,14 @@ export const AppState = {
         };
         DB.projects.push(newProject);
         this.saveDB();
-        return newProject;
+        return { success: true, project: newProject };
     },
 
     addTicket(payload) {
         const now = Date.now();
+        const assignedUser = payload.assignedTo
+            ? DB.users.find((user) => String(user.id) === String(payload.assignedTo))
+            : null;
         const newTicket = {
             id: 'tick' + now,
             title: payload.title,
@@ -445,6 +640,8 @@ export const AppState = {
             status: 'open',
             createdBy: payload.createdBy,
             createdByName: payload.createdByName,
+            assignedTo: payload.assignedTo || '',
+            assignedToName: assignedUser?.name || payload.assignedToName || '',
             clientId: payload.clientId || '',
             clientName: payload.clientName || '',
             projectId: payload.projectId || '',
@@ -454,16 +651,20 @@ export const AppState = {
         };
         DB.tickets.unshift(newTicket);
 
-        DB.users
-            .filter((user) => user.role === 'admin' && user.id !== payload.createdBy)
-            .forEach((admin) => {
+        const notificationTargets = payload.assignedTo
+            ? DB.users.filter((user) => String(user.id) === String(payload.assignedTo))
+            : DB.users.filter((user) => user.role === 'admin' && user.id !== payload.createdBy);
+
+        notificationTargets.forEach((targetUser) => {
                 DB.notifications.unshift({
-                    id: `n-${now}-${admin.id}`,
+                    id: `n-${now}-${targetUser.id}`,
                     type: 'ticket',
-                    message: `New ${newTicket.ticketType} ticket raised: "${newTicket.title}"`,
+                    message: payload.assignedTo
+                        ? `A helpdesk ticket was assigned to you: "${newTicket.title}"`
+                        : `New ${newTicket.ticketType} ticket raised: "${newTicket.title}"`,
                     time: 'Just now',
                     read: false,
-                    userId: admin.id
+                    userId: targetUser.id
                 });
             });
 
@@ -504,7 +705,9 @@ export const AppState = {
                 taskId: newTask.id,
                 title: ms.title,
                 description: ms.description,
-                deadline: ms.deadline,
+                startDate: ms.startDate || '',
+                deliveryDate: ms.deliveryDate || ms.deadline || '',
+                deadline: ms.deliveryDate || ms.deadline || '',
                 order: index,
                 status: 'not-started',
                 adminFeedback: '',
@@ -597,6 +800,48 @@ export const AppState = {
             if (newPassword) user.password = newPassword;
             user.role = newRole;
             this.saveDB();
+        }
+    },
+
+    async updateUserSkills(skillUpdates = []) {
+        if (!Array.isArray(skillUpdates) || skillUpdates.length === 0) {
+            return { success: false, message: 'No skill changes provided.' };
+        }
+
+        skillUpdates.forEach((update) => {
+            const user = DB.users.find((item) => String(item.id) === String(update.id));
+            if (user) {
+                user.skills = Array.isArray(update.skills) ? update.skills : [];
+                if (this.currentUser && String(this.currentUser.id) === String(user.id)) {
+                    this.currentUser.skills = user.skills;
+                    localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
+                }
+            }
+        });
+
+        try {
+            const resp = await fetch('/api/db', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': window.CSRF_TOKEN
+                },
+                body: JSON.stringify({
+                    users: skillUpdates.map((update) => ({
+                        id: update.id,
+                        skills: update.skills
+                    }))
+                })
+            });
+
+            if (!resp.ok) {
+                const text = await resp.text();
+                return { success: false, message: text || 'Skill update failed.' };
+            }
+
+            return { success: true };
+        } catch (error) {
+            return { success: false, message: String(error) };
         }
     }
 };

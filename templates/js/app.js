@@ -32,6 +32,16 @@ const notifBtn = document.getElementById('notif-btn');
 const notifDropdown = document.querySelector('.notification-dropdown');
 const profileBtn = document.getElementById('profile-btn');
 const profileMenu = document.querySelector('.profile-menu');
+const globalSearchInput = document.getElementById('global-search-input');
+const globalSearchResults = document.getElementById('global-search-results');
+const confirmModalOverlay = document.getElementById('confirm-modal-overlay');
+const confirmModalTitle = document.getElementById('confirm-modal-title');
+const confirmModalMessage = document.getElementById('confirm-modal-message');
+const confirmModalClose = document.getElementById('confirm-modal-close');
+const confirmModalCancel = document.getElementById('confirm-modal-cancel');
+const confirmModalConfirm = document.getElementById('confirm-modal-confirm');
+
+let confirmModalAction = null;
 
 // Application Initialization
 async function init() {
@@ -72,7 +82,6 @@ const routes = {
         { id: 'tasks', name: 'Tasks Allotted', icon: 'bx-task', renderer: Components.renderTasks },
         { id: 'progress', name: 'Progress', icon: 'bx-trending-up', renderer: Components.renderProgress },
         { id: 'helpdesk', name: 'Helpdesk', icon: 'bx-support', renderer: Components.renderHelpdesk },
-        { id: 'tickets', name: 'Tickets', icon: 'bx-message-square-detail', renderer: Components.renderTickets },
         { id: 'skills', name: 'Skills & Roles', icon: 'bx-award', renderer: Components.renderSkills },
         { id: 'about', name: 'About Company', icon: 'bx-buildings', renderer: Components.renderAboutCompany }
     ],
@@ -83,7 +92,6 @@ const routes = {
         { id: 'tasks', name: 'Tasks Allotted', icon: 'bx-task', renderer: Components.renderTasks },
         { id: 'progress', name: 'Progress', icon: 'bx-trending-up', renderer: Components.renderProgress },
         { id: 'helpdesk', name: 'Helpdesk', icon: 'bx-support', renderer: Components.renderHelpdesk },
-        { id: 'tickets', name: 'Tickets', icon: 'bx-message-square-detail', renderer: Components.renderTickets },
         { id: 'skills', name: 'Skills & Roles', icon: 'bx-award', renderer: Components.renderSkills },
         { id: 'credentials', name: 'Credentials', icon: 'bx-key', renderer: Components.renderCredentialsPage },
         { id: 'about', name: 'About Company', icon: 'bx-buildings', renderer: Components.renderAboutCompany }
@@ -141,8 +149,142 @@ function buildNavigation(role) {
 
 let currentRouteId = 'dashboard';
 
+function clearGlobalSearchResults() {
+    if (!globalSearchResults) return;
+    globalSearchResults.classList.remove('active');
+    globalSearchResults.innerHTML = '';
+}
+
+function closeConfirmModal() {
+    if (!confirmModalOverlay) return;
+    confirmModalOverlay.classList.remove('show');
+    setTimeout(() => {
+        confirmModalOverlay.classList.remove('active');
+    }, 150);
+    confirmModalAction = null;
+}
+
+function showConfirmModal({ title, message, confirmLabel = 'Confirm', onConfirm }) {
+    if (!confirmModalOverlay) {
+        if (window.confirm(message)) onConfirm?.();
+        return;
+    }
+
+    confirmModalTitle.textContent = title;
+    confirmModalMessage.textContent = message;
+    confirmModalConfirm.textContent = confirmLabel;
+    confirmModalAction = onConfirm || null;
+    confirmModalOverlay.classList.add('active');
+    requestAnimationFrame(() => confirmModalOverlay.classList.add('show'));
+}
+
+function renderTaskChatMessages(task) {
+    if (!task) return '';
+    if (!task.comments || task.comments.length === 0) {
+        return '<p style="color:var(--text-secondary); text-align:center; padding: 20px;">No messages yet. Start the conversation!</p>';
+    }
+
+    return task.comments.map((comment) => {
+        const isMine = String(comment.senderId) === String(AppState.currentUser.id);
+        const initials = (isMine ? AppState.currentUser.name : comment.sender).split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+        return `
+            <div style="display:flex;align-items:flex-end;gap:10px;margin-bottom:16px;${isMine ? 'flex-direction:row-reverse;' : ''}">
+                <div style="width:32px;height:32px;border-radius:50%;background:${isMine ? 'var(--primary)' : '#475569'};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;">${initials}</div>
+                <div style="max-width:68%;">
+                    <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;${isMine ? 'text-align:right;' : ''}">${isMine ? 'You' : comment.sender} &middot; ${comment.time}</div>
+                    <div style="background:${isMine ? 'var(--primary)' : 'var(--bg-main)'};color:${isMine ? '#fff' : 'var(--text-primary)'};padding:10px 14px;border-radius:${isMine ? '16px 4px 16px 16px' : '4px 16px 16px 16px'};font-size:14px;line-height:1.5;word-break:break-word;border:1px solid ${isMine ? 'transparent' : 'var(--border)'}">
+                        ${comment.text ? `<span>${comment.text}</span>` : ''}
+                        ${comment.attachment ? `<div style="margin-top:8px;"><img src="${comment.attachment}" style="max-width:100%;border-radius:8px;"></div>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function syncTaskChatView(taskId) {
+    const task = DB.tasks.find((item) => String(item.id) === String(taskId));
+    const container = document.getElementById('chat-messages-container');
+    if (!task || !container) return;
+
+    const wasNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+    container.innerHTML = renderTaskChatMessages(task);
+    if (wasNearBottom) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+function handleSearchSelection(result) {
+    clearGlobalSearchResults();
+    if (globalSearchInput) globalSearchInput.value = '';
+
+    if (result.type === 'client') {
+        AppState.activeViewClientId = result.id;
+        navigateTo('view-client', () => Components.renderClientDetailsPage(result.id), 'Client Details');
+        return;
+    }
+
+    if (result.type === 'project') {
+        AppState.activeViewProjectId = result.id;
+        navigateTo('view-project', () => Components.renderProjectDetailsPage(result.id), 'Project Details');
+        return;
+    }
+
+    if (result.type === 'task') {
+        AppState.activeViewTaskId = result.id;
+        navigateTo('view-task', () => Components.renderTaskDetailsPage(result.id), 'Task Details');
+        bindTaskViewEvents();
+        return;
+    }
+
+    if (result.type === 'ticket') {
+        navigateTo('helpdesk', routes[AppState.currentUser.role].find((route) => route.id === 'helpdesk').renderer, 'Helpdesk');
+        return;
+    }
+
+    if (result.type === 'contract') {
+        navigateTo('clients', routes[AppState.currentUser.role].find((route) => route.id === 'clients').renderer, 'Clients');
+    }
+}
+
+function renderGlobalSearchResults() {
+    if (!globalSearchInput || !globalSearchResults || !AppState.currentUser) return;
+
+    const query = globalSearchInput.value.trim();
+    if (!query) {
+        clearGlobalSearchResults();
+        return;
+    }
+
+    const results = AppState.searchWorkspace(query);
+    if (!results.length) {
+        globalSearchResults.classList.add('active');
+        globalSearchResults.innerHTML = `<div class="search-result-item" style="cursor:default;"><div><strong>No results</strong><small>Try a client, project, task, or helpdesk keyword.</small></div></div>`;
+        return;
+    }
+
+    globalSearchResults.classList.add('active');
+    globalSearchResults.innerHTML = results.map((result, index) => `
+        <button type="button" class="search-result-item" data-index="${index}">
+            <div>
+                <strong>${result.title}</strong>
+                <small>${result.subtitle}</small>
+            </div>
+            <span class="search-result-type">${result.type}</span>
+        </button>
+    `).join('');
+
+    globalSearchResults.querySelectorAll('.search-result-item').forEach((button) => {
+        button.addEventListener('click', () => {
+            const selected = results[Number(button.dataset.index)];
+            if (selected) handleSearchSelection(selected);
+        });
+    });
+}
+
 function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
     if (!contentArea) return;
+    clearGlobalSearchResults();
     currentRouteId = routeId;
     pageTitle.textContent = routeName;
     contentArea.innerHTML = renderFn();
@@ -206,11 +348,16 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
         deleteBtns.forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const docId = btn.dataset.id;
-                if (confirm('Delete this company document?')) {
+                showConfirmModal({
+                    title: 'Delete Document',
+                    message: 'Delete this company document from the dashboard?',
+                    confirmLabel: 'Delete',
+                    onConfirm: () => {
                     DB.companyInfo.documents = DB.companyInfo.documents.filter(d => d.id !== docId);
                     AppState.saveDB();
                     navigateTo('about', Components.renderAboutCompany, 'About Company');
-                }
+                    }
+                });
             });
         });
 
@@ -234,6 +381,23 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
         // Create Contract button — ID in component is btn-create-contract
         document.getElementById('btn-create-contract')?.addEventListener('click', () => {
             navigateTo('add-contract', Components.renderCreateContractPage, 'Create New Contract');
+        });
+
+        document.querySelectorAll('.btn-view-client').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                AppState.activeViewClientId = btn.dataset.id;
+                navigateTo('view-client', () => Components.renderClientDetailsPage(btn.dataset.id), 'Client Details');
+            });
+        });
+
+    } else if (routeId === 'view-client') {
+        document.getElementById('btn-back-clients')?.addEventListener('click', () => {
+            AppState.activeViewClientId = null;
+            navigateTo('clients', routes.admin.find((route) => route.id === 'clients').renderer, 'Clients');
+        });
+
+        document.getElementById('btn-delete-client-details')?.addEventListener('click', () => {
+            window.deleteClient(document.getElementById('btn-delete-client-details').dataset.id);
         });
 
     } else if (routeId === 'credentials') {
@@ -270,24 +434,64 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
                 }).catch(err => alert('Error: ' + err));
             });
         });
-    } else if (routeId === 'tickets') {
+    } else if (routeId === 'skills') {
+        document.getElementById('btn-save-skill-updates')?.addEventListener('click', async () => {
+            const updates = Array.from(document.querySelectorAll('.employee-skills-input')).map((input) => ({
+                id: input.dataset.id,
+                skills: input.value
+                    .split(',')
+                    .map((skill) => skill.trim())
+                    .filter(Boolean)
+            }));
+
+            const result = await AppState.updateUserSkills(updates);
+            if (!result.success) {
+                alert(result.message || 'Skill update failed.');
+                return;
+            }
+
+            navigateTo('skills', routes[AppState.currentUser.role].find((route) => route.id === 'skills').renderer, 'Skills & Roles');
+            alert('Employee skills updated successfully.');
+        });
+    } else if (routeId === 'helpdesk') {
         document.getElementById('btn-create-ticket')?.addEventListener('click', () => {
-            navigateTo('add-ticket', Components.renderCreateTicketPage, 'Raise Ticket');
+            navigateTo('add-ticket', Components.renderCreateTicketPage, AppState.currentUser.role === 'admin' ? 'Assign Ticket' : 'Raise Ticket');
         });
 
         document.querySelectorAll('.ticket-status-select').forEach((select) => {
             select.addEventListener('change', () => {
                 AppState.updateTicket(select.dataset.id, { status: select.value });
-                navigateTo('tickets', routes[AppState.currentUser.role].find(r => r.id === 'tickets').renderer, 'Tickets');
+                navigateTo('helpdesk', routes[AppState.currentUser.role].find(r => r.id === 'helpdesk').renderer, 'Helpdesk');
             });
-        });
-    } else if (routeId === 'helpdesk') {
-        document.getElementById('btn-create-ticket')?.addEventListener('click', () => {
-            navigateTo('add-ticket', Components.renderCreateTicketPage, 'Raise Ticket');
         });
     } else if (routeId === 'projects') {
         document.getElementById('btn-create-project')?.addEventListener('click', () => {
             navigateTo('add-project', Components.renderCreateProjectPage, 'Create New Project');
+        });
+
+        document.querySelectorAll('.btn-view-project').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                AppState.activeViewProjectId = btn.dataset.id;
+                navigateTo('view-project', () => Components.renderProjectDetailsPage(btn.dataset.id), 'Project Details');
+            });
+        });
+
+        document.querySelectorAll('.btn-edit-project').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                AppState.activeViewProjectId = btn.dataset.id;
+                navigateTo('edit-project', () => Components.renderEditProjectPage(btn.dataset.id), 'Edit Project');
+            });
+        });
+    } else if (routeId === 'view-project') {
+        document.getElementById('btn-back-projects')?.addEventListener('click', () => {
+            AppState.activeViewProjectId = null;
+            navigateTo('projects', routes[AppState.currentUser.role].find((route) => route.id === 'projects').renderer, 'Projects');
+        });
+
+        document.getElementById('btn-open-edit-project')?.addEventListener('click', () => {
+            const projectId = document.getElementById('btn-open-edit-project').dataset.id;
+            AppState.activeViewProjectId = projectId;
+            navigateTo('edit-project', () => Components.renderEditProjectPage(projectId), 'Edit Project');
         });
     } else if (routeId === 'tasks') {
         document.getElementById('btn-create-task')?.addEventListener('click', () => {
@@ -298,10 +502,15 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
         document.querySelectorAll('.btn-delete-task').forEach(btn => {
             btn.addEventListener('click', (e) => {
                e.stopPropagation();
-               if(confirm('Are you sure you want to delete this task?')) {
+               showConfirmModal({
+                   title: 'Delete Task',
+                   message: 'Delete this task from the task board?',
+                   confirmLabel: 'Delete',
+                   onConfirm: () => {
                    AppState.deleteTask(btn.dataset.id);
                    navigateTo('tasks', routes[AppState.currentUser.role].find(r => r.id === 'tasks').renderer, 'Tasks Allotted');
-               }
+                   }
+               });
             });
         });
 
@@ -341,6 +550,7 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
     } else if (routeId === 'add-project') {
         const dueDateInput = document.getElementById('fp-date');
         const dueDateTrigger = document.getElementById('fp-date-trigger');
+        const today = new Date().toISOString().split('T')[0];
 
         const openDatePicker = () => {
             if (!dueDateInput) return;
@@ -350,21 +560,57 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
             }
         };
 
+        if (dueDateInput) dueDateInput.min = today;
         dueDateInput?.addEventListener('click', openDatePicker);
         dueDateTrigger?.addEventListener('click', openDatePicker);
 
         document.getElementById('project-form')?.addEventListener('submit', (e) => {
             e.preventDefault();
-            AppState.addProject(
+            const result = AppState.addProject(
                 document.getElementById('fp-name').value,
                 document.getElementById('fp-client').value,
                 document.getElementById('fp-date').value,
                 document.getElementById('fp-desc').value
             );
+            if (!result?.success) {
+                alert(result?.message || 'Project could not be created.');
+                return;
+            }
             navigateTo('projects', routes.admin.find(r => r.id === 'projects').renderer, 'Projects');
         });
         document.getElementById('btn-cancel-project')?.addEventListener('click', () => {
             navigateTo('projects', routes.admin.find(r => r.id === 'projects').renderer, 'Projects');
+        });
+    } else if (routeId === 'edit-project') {
+        const dueDateInput = document.getElementById('edit-project-date');
+        if (dueDateInput) dueDateInput.min = new Date().toISOString().split('T')[0];
+
+        document.getElementById('edit-project-form')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const projectId = e.currentTarget.dataset.id;
+            const result = AppState.updateProject(projectId, {
+                name: document.getElementById('edit-project-name').value,
+                description: document.getElementById('edit-project-desc').value,
+                clientId: document.getElementById('edit-project-client').value,
+                dueDate: document.getElementById('edit-project-date').value,
+                status: document.getElementById('edit-project-status').value,
+                progress: document.getElementById('edit-project-progress').value
+            });
+
+            if (!result?.success) {
+                alert(result?.message || 'Project could not be updated.');
+                return;
+            }
+
+            AppState.activeViewProjectId = projectId;
+            navigateTo('view-project', () => Components.renderProjectDetailsPage(projectId), 'Project Details');
+        });
+
+        document.getElementById('btn-cancel-edit-project')?.addEventListener('click', () => {
+            const projectId = document.getElementById('edit-project-form')?.dataset.id;
+            if (!projectId) return;
+            AppState.activeViewProjectId = projectId;
+            navigateTo('view-project', () => Components.renderProjectDetailsPage(projectId), 'Project Details');
         });
     } else if (routeId === 'add-client') {
         document.getElementById('add-client-form')?.addEventListener('submit', (e) => {
@@ -386,9 +632,16 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
             const msRows = document.querySelectorAll('.milestone-entry-row');
             const milestones = Array.from(msRows).map((row, i) => ({
                 title: row.querySelector('.ms-title').value,
-                deadline: row.querySelector('.ms-deadline').value,
+                startDate: row.querySelector('.ms-start-date').value,
+                deliveryDate: row.querySelector('.ms-delivery-date').value,
                 order: i
-            })).filter(m => m.title.trim() !== '');
+            })).filter((milestone) => milestone.title.trim() !== '');
+
+            const invalidMilestone = milestones.find((milestone) => milestone.startDate && milestone.deliveryDate && milestone.startDate > milestone.deliveryDate);
+            if (invalidMilestone) {
+                alert('Milestone delivery date cannot be earlier than the milestone start date.');
+                return;
+            }
 
             AppState.addTask(
                 document.getElementById('ft-title').value,
@@ -408,10 +661,11 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
             const container = document.getElementById('milestones-container');
             const div = document.createElement('div');
             div.className = 'milestone-entry-row';
-            div.style = 'display:grid; grid-template-columns: 1fr 1fr auto; gap:10px; margin-bottom:10px;';
+            div.style = 'display:grid; grid-template-columns: 1.2fr 1fr 1fr auto; gap:10px; margin-bottom:10px;';
             div.innerHTML = `
                 <input type="text" class="ms-title" placeholder="Milestone Title" style="padding:8px; border-radius:6px; border:1px solid var(--border); background:var(--bg-main); color:var(--text-primary);">
-                <input type="date" class="ms-deadline" style="padding:8px; border-radius:6px; border:1px solid var(--border); background:var(--bg-main); color:var(--text-primary);">
+                <input type="date" class="ms-start-date" style="padding:8px; border-radius:6px; border:1px solid var(--border); background:var(--bg-main); color:var(--text-primary);">
+                <input type="date" class="ms-delivery-date" style="padding:8px; border-radius:6px; border:1px solid var(--border); background:var(--bg-main); color:var(--text-primary);">
                 <button type="button" class="btn-remove-ms" style="background:none; border:none; color:#ff4d4d; cursor:pointer; font-size:20px;"><i class='bx bx-x-circle'></i></button>
             `;
             div.querySelector('.btn-remove-ms').onclick = () => div.remove();
@@ -419,31 +673,50 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
         });
     } else if (routeId === 'add-contract') {
         const contractDateInput = document.getElementById('fc-date');
-        const contractDateTrigger = document.getElementById('fc-date-trigger');
+        const contractClientInput = document.getElementById('fc-client');
+        const contractContactInput = document.getElementById('fc-contact');
+        const contractStartDateInput = document.getElementById('fc-start-date');
+        const contractEndDateInput = document.getElementById('fc-end-date');
+        const today = new Date().toISOString().split('T')[0];
 
-        const openContractDatePicker = () => {
-            if (!contractDateInput) return;
-            contractDateInput.focus();
-            if (typeof contractDateInput.showPicker === 'function') {
-                contractDateInput.showPicker();
+        if (contractDateInput) contractDateInput.max = today;
+        if (contractStartDateInput) contractStartDateInput.min = today;
+        if (contractEndDateInput) contractEndDateInput.min = today;
+
+        const syncSelectedClient = () => {
+            const clientId = contractClientInput?.value;
+            const client = AppState.getClientById(clientId);
+            if (contractContactInput) {
+                contractContactInput.value = client?.contact || '';
             }
         };
 
-        contractDateInput?.addEventListener('click', openContractDatePicker);
-        contractDateTrigger?.addEventListener('click', openContractDatePicker);
+        contractClientInput?.addEventListener('change', syncSelectedClient);
 
         document.getElementById('contract-form')?.addEventListener('submit', (e) => {
             e.preventDefault();
             const clientId = document.getElementById('fc-client').value;
             const client = DB.clients.find((item) => item.id === clientId || item.name === clientId);
             const clientName = client?.name || clientId;
-            const newC = AppState.addContract(
+
+            if (contractStartDateInput?.value && contractEndDateInput?.value && contractStartDateInput.value > contractEndDateInput.value) {
+                alert('Contract end date cannot be earlier than the start date.');
+                return;
+            }
+
+            const newC = AppState.addContract({
+                clientId,
                 clientName,
-                document.getElementById('fc-project').value,
-                document.getElementById('fc-amount').value,
-                document.getElementById('fc-date').value,
-                clientId
-            );
+                clientContact: document.getElementById('fc-contact').value,
+                projectDetails: document.getElementById('fc-project').value,
+                serviceScope: document.getElementById('fc-scope').value,
+                amount: document.getElementById('fc-amount').value,
+                date: document.getElementById('fc-date').value,
+                startDate: document.getElementById('fc-start-date').value,
+                endDate: document.getElementById('fc-end-date').value,
+                paymentTerms: document.getElementById('fc-payment-terms').value,
+                termsAndConditions: document.getElementById('fc-terms').value
+            });
             // Generate & download the PDF, then go back to clients
             window.downloadContract(newC.id);
             navigateTo('clients', routes[AppState.currentUser.role].find(r => r.id === 'clients').renderer, 'Clients');
@@ -458,6 +731,12 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
             const projectId = document.getElementById('ticket-project').value;
             const client = AppState.getClientById(clientId);
             const project = DB.projects.find((item) => item.id === projectId);
+            const assigneeId = document.getElementById('ticket-assignee')?.value || '';
+
+            if (AppState.currentUser.role === 'admin' && !assigneeId) {
+                alert('Please assign this helpdesk ticket to an employee.');
+                return;
+            }
 
             AppState.addTicket({
                 title: document.getElementById('ticket-title').value.trim(),
@@ -466,6 +745,7 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
                 priority: document.getElementById('ticket-priority').value,
                 createdBy: AppState.currentUser.id,
                 createdByName: AppState.currentUser.name,
+                assignedTo: assigneeId,
                 clientId,
                 clientName: client?.name || '',
                 projectId,
@@ -580,11 +860,16 @@ window.bindTaskViewEvents = function() {
 
     // Admin - Delete Task
     document.getElementById('btn-delete-task')?.addEventListener('click', () => {
-        if (confirm('Delete this task permanently?')) {
+        showConfirmModal({
+            title: 'Delete Task',
+            message: 'Delete this task permanently?',
+            confirmLabel: 'Delete',
+            onConfirm: () => {
             AppState.deleteTask(AppState.activeViewTaskId);
             AppState.activeViewTaskId = null;
             navigateTo('tasks', routes[AppState.currentUser.role].find(r => r.id === 'tasks').renderer, 'Tasks Allotted');
-        }
+            }
+        });
     });
 
     // Chat: file attach (correct ID = chat-file)
@@ -630,9 +915,7 @@ window.bindTaskViewEvents = function() {
         if (chatFileName) chatFileName.textContent = '';
         if (chatFileInput) chatFileInput.value = '';
 
-        // Re-render & scroll
-        navigateTo('view-task', () => Components.renderTaskDetailsPage(AppState.activeViewTaskId), 'Task Details');
-        bindTaskViewEvents();
+        syncTaskChatView(AppState.activeViewTaskId);
         const container = document.getElementById('chat-messages-container');
         if (container) container.scrollTop = container.scrollHeight;
     });
@@ -662,23 +945,31 @@ window.bindTaskViewEvents = function() {
         if (addMilestoneForm) addMilestoneForm.style.display = 'none';
         const titleInput = document.getElementById('inline-ms-title');
         const descInput = document.getElementById('inline-ms-desc');
-        const deadlineInput = document.getElementById('inline-ms-deadline');
+        const startDateInput = document.getElementById('inline-ms-start-date');
+        const deliveryDateInput = document.getElementById('inline-ms-delivery-date');
         if (titleInput) titleInput.value = '';
         if (descInput) descInput.value = '';
-        if (deadlineInput) deadlineInput.value = '';
+        if (startDateInput) startDateInput.value = '';
+        if (deliveryDateInput) deliveryDateInput.value = '';
     });
 
     saveMilestoneBtn?.addEventListener('click', () => {
         const title = document.getElementById('inline-ms-title')?.value?.trim();
         const description = document.getElementById('inline-ms-desc')?.value?.trim();
-        const deadline = document.getElementById('inline-ms-deadline')?.value;
+        const startDate = document.getElementById('inline-ms-start-date')?.value;
+        const deliveryDate = document.getElementById('inline-ms-delivery-date')?.value;
 
         if (!title) {
             alert('Please enter a milestone title.');
             return;
         }
 
-        AppState.addMilestoneToTask(AppState.activeViewTaskId, title, description, deadline);
+        if (startDate && deliveryDate && startDate > deliveryDate) {
+            alert('Milestone delivery date cannot be earlier than the start date.');
+            return;
+        }
+
+        AppState.addMilestoneToTask(AppState.activeViewTaskId, title, description, startDate, deliveryDate);
         navigateTo('view-task', () => Components.renderTaskDetailsPage(AppState.activeViewTaskId), 'Task Details');
         bindTaskViewEvents();
     });
@@ -777,25 +1068,44 @@ window.bindTaskViewEvents = function() {
 
 // ---- Global action helpers (used by inline onclick= in components) ----
 window.deleteContract = function(contractId) {
-    if (confirm('Delete this contract permanently?')) {
+    showConfirmModal({
+        title: 'Delete Contract',
+        message: 'Delete this contract permanently?',
+        confirmLabel: 'Delete',
+        onConfirm: () => {
         AppState.deleteContract(contractId);
         navigateTo('clients', routes[AppState.currentUser.role].find(r => r.id === 'clients').renderer, 'Clients');
-    }
+        }
+    });
 };
 
 window.deleteClient = function(clientId) {
-    if (confirm('Delete this client permanently?')) {
-        AppState.deleteClient(clientId);
-        navigateTo('clients', routes[AppState.currentUser.role].find(r => r.id === 'clients').renderer, 'Clients');
-    }
+    showConfirmModal({
+        title: 'Delete Client',
+        message: 'Delete this client permanently? This will remove its contracts and unlink related tickets.',
+        confirmLabel: 'Delete',
+        onConfirm: () => {
+            const result = AppState.deleteClient(clientId);
+            if (result?.blocked) {
+                alert(`This client cannot be deleted yet because ${result.projects.length} project(s) still depend on it. Reassign or remove those projects first.`);
+                return;
+            }
+            navigateTo('clients', routes[AppState.currentUser.role].find(r => r.id === 'clients').renderer, 'Clients');
+        }
+    });
 };
 
 window.deleteProject = function(projectId) {
-    if (confirm('Delete this project permanently? All associated tasks will remain.')) {
+    showConfirmModal({
+        title: 'Delete Project',
+        message: 'Delete this project permanently? All associated tasks will remain.',
+        confirmLabel: 'Delete',
+        onConfirm: () => {
         DB.projects = DB.projects.filter(p => p.id !== projectId);
         AppState.saveDB();
         navigateTo('projects', routes[AppState.currentUser.role].find(r => r.id === 'projects').renderer, 'Projects');
-    }
+        }
+    });
 };
 
 // ---- Contract Generation (PDF) ----
@@ -807,8 +1117,14 @@ window.downloadContract = function (contractId) {
     document.getElementById('c-date').textContent = c.date;
     document.getElementById('c-id').textContent = c.id;
     document.getElementById('c-client-name').textContent = c.clientName;
+    document.getElementById('c-client-contact').textContent = c.clientContact || 'Not provided';
     document.getElementById('c-project').textContent = c.projectDetails;
+    document.getElementById('c-service-scope').textContent = c.serviceScope || 'Detailed scope will be defined in the attached statement of work.';
     document.getElementById('c-amount').textContent = c.amount;
+    document.getElementById('c-start-date').textContent = c.startDate || 'TBD';
+    document.getElementById('c-end-date').textContent = c.endDate || 'TBD';
+    document.getElementById('c-payment-terms').textContent = c.paymentTerms || 'Payment schedule to be agreed by both parties.';
+    document.getElementById('c-terms').textContent = c.termsAndConditions || 'Both parties agree to follow the approved scope, timelines, and delivery responsibilities.';
     document.getElementById('c-client-sign').textContent = c.clientName;
 
     const el = document.getElementById('contract-pdf-template');
@@ -1124,10 +1440,10 @@ function resolveTaskFromNotification(notification) {
 
 function openNotificationTarget(notification) {
     if (notification?.type === 'ticket') {
-        const ticketsRoute = routes[AppState.currentUser.role]?.find(r => r.id === 'tickets');
-        if (ticketsRoute) {
+        const helpdeskRoute = routes[AppState.currentUser.role]?.find(r => r.id === 'helpdesk');
+        if (helpdeskRoute) {
             if (notifDropdown) notifDropdown.classList.remove('active');
-            navigateTo(ticketsRoute.id, ticketsRoute.renderer, ticketsRoute.name);
+            navigateTo(helpdeskRoute.id, helpdeskRoute.renderer, helpdeskRoute.name);
             return;
         }
     }
@@ -1317,6 +1633,30 @@ function setupEventListeners() {
             });
         });
     }
+
+    globalSearchInput?.addEventListener('input', renderGlobalSearchResults);
+    globalSearchInput?.addEventListener('focus', renderGlobalSearchResults);
+
+    document.addEventListener('click', (event) => {
+        if (globalSearchResults && globalSearchInput) {
+            const clickedInsideSearch = event.target.closest('.search-bar');
+            if (!clickedInsideSearch) {
+                clearGlobalSearchResults();
+            }
+        }
+
+        if (confirmModalOverlay && event.target === confirmModalOverlay) {
+            closeConfirmModal();
+        }
+    });
+
+    confirmModalClose?.addEventListener('click', closeConfirmModal);
+    confirmModalCancel?.addEventListener('click', closeConfirmModal);
+    confirmModalConfirm?.addEventListener('click', () => {
+        const action = confirmModalAction;
+        closeConfirmModal();
+        action?.();
+    });
 }
 
 function updateThemeIcon(isDark) {
@@ -1360,30 +1700,11 @@ setInterval(async () => {
             const isUserTyping = chatIn && document.activeElement === chatIn;
             const currentMsg = chatIn ? chatIn.value : '';
 
-            if (isUserTyping) {
-                const task = DB.tasks.find(t => String(t.id) === String(AppState.activeViewTaskId));
-                if (task) {
-                    const container = document.getElementById('chat-messages-container');
-                    if (container) {
-                        const wasAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 60;
-                        container.innerHTML = task.comments.map(c => {
-                             const isMine = String(c.senderId) === String(AppState.currentUser.id);
-                             const initials = (isMine ? AppState.currentUser.name : c.sender).split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase();
-                             return `<div style="display:flex;align-items:flex-end;gap:10px;margin-bottom:16px;${isMine ? 'flex-direction:row-reverse;' : ''}">
-                                 <div style="width:32px;height:32px;border-radius:50%;background:${isMine ? 'var(--primary)' : 'var(--border)'};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;">${initials}</div>
-                                 <div style="max-width:68%;">
-                                     <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;${isMine ? 'text-align:right;' : ''}">${isMine ? 'You' : c.sender} &middot; ${c.time}</div>
-                                     <div style="background:${isMine ? 'var(--primary)' : 'var(--bg-main)'};color:${isMine ? '#fff' : 'var(--text-primary)'};padding:10px 14px;border-radius:${isMine ? '16px 4px 16px 16px' : '4px 16px 16px 16px'};font-size:14px;line-height:1.5;word-break:break-word;border:1px solid ${isMine ? 'transparent' : 'var(--border)'}">
-                                         ${c.text ? `<span style="word-break:break-word;">${c.text}</span>` : ''}
-                                         ${c.attachment ? `<div style="margin-top:8px;"><img src="${c.attachment}" style="max-width:100%;border-radius:8px;"></div>` : ''}
-                                     </div>
-                                 </div>
-                             </div>`;
-                        }).join('');
-                        if (wasAtBottom) container.scrollTop = container.scrollHeight;
-                        chatIn.focus();
-                        chatIn.value = currentMsg;
-                    }
+            if (currentRouteId === 'view-task' || isUserTyping) {
+                syncTaskChatView(AppState.activeViewTaskId);
+                if (isUserTyping && chatIn) {
+                    chatIn.focus();
+                    chatIn.value = currentMsg;
                 }
             } else {
                 navigateTo('view-task', () => Components.renderTaskDetailsPage(AppState.activeViewTaskId), 'Task Details');
@@ -1400,9 +1721,7 @@ setInterval(async () => {
                 navigateTo('projects', routes[AppState.currentUser.role].find(r => r.id === 'projects').renderer, 'Projects');
             } else if (currentRouteId === 'clients' && AppState.currentUser.role === 'admin') {
                 navigateTo('clients', routes[AppState.currentUser.role].find(r => r.id === 'clients').renderer, 'Clients');
-            } else if (currentRouteId === 'tickets') {
-                navigateTo('tickets', routes[AppState.currentUser.role].find(r => r.id === 'tickets').renderer, 'Tickets');
-            } else if (currentRouteId === 'helpdesk') {
+            } else if (currentRouteId === 'helpdesk' || currentRouteId === 'tickets') {
                 navigateTo('helpdesk', routes[AppState.currentUser.role].find(r => r.id === 'helpdesk').renderer, 'Helpdesk');
             } else if (currentRouteId === 'dashboard') {
                 navigateTo('dashboard', routes[AppState.currentUser.role].find(r => r.id === 'dashboard').renderer, 'Dashboard');

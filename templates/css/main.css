@@ -611,16 +611,27 @@ p {
 }
 .search-bar {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     background: var(--bg-main);
     border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 6px 15px;
-    width: 250px;
+    border-radius: 18px;
+    padding: 10px 14px;
+    width: 360px;
+    position: relative;
+    gap: 10px;
 }
 .search-bar i {
     color: var(--text-secondary);
-    margin-right: 10px;
+    margin-top: 6px;
+}
+.search-bar-copy {
+    flex: 1;
+}
+.search-bar-copy small {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--text-secondary);
 }
 .search-bar input {
     border: none;
@@ -629,6 +640,52 @@ p {
     outline: none;
     width: 100%;
     font-size: 14px;
+}
+.search-results {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 0;
+    right: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: var(--shadow);
+    padding: 8px;
+    display: none;
+    z-index: 1200;
+}
+.search-results.active {
+    display: block;
+}
+.search-result-item {
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    cursor: pointer;
+    text-align: left;
+}
+.search-result-item:hover {
+    background: var(--sidebar-hover);
+}
+.search-result-item strong {
+    display: block;
+    margin-bottom: 4px;
+}
+.search-result-item small {
+    color: var(--text-secondary);
+}
+.search-result-type {
+    align-self: center;
+    font-size: 11px;
+    color: var(--primary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
 }
 
 /* Notification & Profile Dropdowns */
@@ -1011,6 +1068,9 @@ table tbody tr:last-child td {
     display: flex;
     /* Opacity timeout in JS */
 }
+.modal-overlay.show {
+    opacity: 1;
+}
 .modal {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -1179,14 +1239,17 @@ table tbody tr:last-child td {
     font-size: 12px;
     font-weight: 700;
 }
+.portfolio-health.on-track,
 .portfolio-health.strong {
     background: rgba(16, 185, 129, 0.12);
     color: var(--success);
 }
+.portfolio-health.watching,
 .portfolio-health.steady {
     background: rgba(245, 158, 11, 0.12);
     color: var(--warning);
 }
+.portfolio-health.at-risk,
 .portfolio-health.needs-support {
     background: rgba(239, 68, 68, 0.12);
     color: var(--danger);

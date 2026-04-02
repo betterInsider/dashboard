@@ -67,7 +67,10 @@
                 <div class="header-right">
                     <div class="search-bar">
                         <i class='bx bx-search'></i>
-                        <input type="text" placeholder="Search...">
+                        <div class="search-bar-copy">
+                            <input type="text" id="global-search-input" placeholder="Global search: clients, projects, tasks, tickets">
+                        </div>
+                        <div class="search-results" id="global-search-results"></div>
                     </div>
                     
                     <div class="notification-wrapper">
@@ -113,6 +116,22 @@
 
     <!-- Dedicated pages are rendered in content-area -->
 
+    <div class="modal-overlay" id="confirm-modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="confirm-modal-title">Confirm Action</h3>
+                <button type="button" class="close-modal" id="confirm-modal-close" aria-label="Close confirmation modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-modal-message" style="color: var(--text-secondary); line-height: 1.6;"></p>
+                <div style="display:flex; gap:12px; justify-content:flex-end; margin-top: 24px;">
+                    <button type="button" class="btn btn-secondary btn-sm" id="confirm-modal-cancel">Cancel</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="confirm-modal-confirm">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Hidden Template for Contract Generation -->
     <div id="contract-pdf-template" style="display: none;">
         <div class="contract-doc" style="padding: 40px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #333;">
@@ -124,6 +143,8 @@
             <div style="margin-bottom: 30px;">
                 <p><strong>Date:</strong> <span id="c-date"></span></p>
                 <p><strong>Contract ID:</strong> <span id="c-id"></span></p>
+                <p><strong>Client Contact:</strong> <span id="c-client-contact"></span></p>
+                <p><strong>Contract Duration:</strong> <span id="c-start-date"></span> to <span id="c-end-date"></span></p>
             </div>
             <div style="margin-bottom: 30px; line-height: 1.6;">
                 <p>This Contract is entered into by and between <strong>Better Inside</strong> ("Agency") and <strong id="c-client-name"></strong> ("Client").</p>
@@ -132,12 +153,20 @@
                     The Agency agrees to provide the following project services: <span id="c-project"></span>.
                 </p>
                 <p>
-                    <strong>2. Compensation</strong><br>
+                    <strong>2. Scope of Work</strong><br>
+                    <span id="c-service-scope"></span>
+                </p>
+                <p>
+                    <strong>3. Compensation</strong><br>
                     The Client shall pay the Agency the total amount of <strong>$<span id="c-amount"></span></strong> for the services rendered.
                 </p>
                 <p>
-                    <strong>3. Terms and Conditions</strong><br>
-                    Both parties agree to adhere to the project timeline and milestones as discussed. This document serves as a legally binding agreement.
+                    <strong>4. Payment Terms</strong><br>
+                    <span id="c-payment-terms"></span>
+                </p>
+                <p>
+                    <strong>5. Terms and Conditions</strong><br>
+                    <span id="c-terms"></span>
                 </p>
             </div>
             <div style="display: flex; justify-content: space-between; margin-top: 100px;">
