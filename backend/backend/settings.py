@@ -155,3 +155,5 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 15728640  # 15 MB
 
 # Custom Auth Model
 AUTH_USER_MODEL = 'accounts.CustomUser'
+
+STATIC_ROOT = BASE_DIR / 'static'
