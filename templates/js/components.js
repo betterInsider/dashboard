@@ -1,6 +1,232 @@
 import { DB, AppState } from './data.js';
 
+function escapeHtml(value = '') {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function getInitials(name = '') {
+    return String(name)
+        .split(' ')
+        .filter(Boolean)
+        .map((part) => part[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase() || 'BI';
+}
+
+function renderChatComposer({ formId, inputId, placeholder, buttonLabel, buttonIcon }) {
+    return `
+        <form class="chatbot-composer" id="${formId}">
+            <div class="chatbot-composer-field">
+                <input type="text" id="${inputId}" placeholder="${escapeHtml(placeholder)}" autocomplete="off">
+            </div>
+            <button type="submit" class="btn btn-primary chatbot-send-btn">
+                <i class='bx ${buttonIcon}'></i>
+                <span>${escapeHtml(buttonLabel)}</span>
+            </button>
+        </form>
+    `;
+}
+
 export const Components = {
+    renderChatbotWidget(chatState = {}) {
+        const activeTab = chatState.activeTab === 'global' ? 'global' : 'assistant';
+        const unreadCount = Number(chatState.unreadGlobalCount) || 0;
+        const currentUser = AppState.currentUser || { name: 'You', id: '' };
+
+        return `
+            <div class="chatbot-shell ${chatState.isOpen ? 'open' : ''}">
+                <div class="chatbot-panel ${chatState.isOpen ? 'open' : ''}" aria-hidden="${chatState.isOpen ? 'false' : 'true'}">
+                    <div class="chatbot-panel-header">
+                        <div>
+                            <span class="chatbot-kicker">AI Workspace</span>
+                            <h3>Better Assistant</h3>
+                            <p>${activeTab === 'assistant' ? 'Ask for help, draft ideas, or leave notes for future AI workflows.' : 'A shared mock chat room for internal team conversation.'}</p>
+                        </div>
+                        <button type="button" class="icon-btn chatbot-close-btn" id="chatbot-close-btn" aria-label="Close chat">
+                            <i class='bx bx-x'></i>
+                        </button>
+                    </div>
+
+                    <div class="chatbot-tabs" role="tablist" aria-label="Chat views">
+                        <button type="button" class="chatbot-tab ${activeTab === 'assistant' ? 'active' : ''}" data-chat-tab="assistant" role="tab" aria-selected="${activeTab === 'assistant' ? 'true' : 'false'}">
+                            <i class='bx bx-bot'></i>
+                            <span>Assistant</span>
+                        </button>
+                        <button type="button" class="chatbot-tab ${activeTab === 'global' ? 'active' : ''}" data-chat-tab="global" role="tab" aria-selected="${activeTab === 'global' ? 'true' : 'false'}">
+                            <i class='bx bx-chat'></i>
+                            <span>Global Chat</span>
+                            ${unreadCount > 0 ? `<span class="chatbot-tab-badge">${Math.min(unreadCount, 9)}+</span>` : ''}
+                        </button>
+                    </div>
+
+                    <div class="chatbot-panel-body">
+                        ${activeTab === 'assistant'
+                            ? this.renderAssistantChatPanel(chatState)
+                            : this.renderGlobalChatPanel(chatState, currentUser)}
+                    </div>
+                </div>
+
+                <button
+                    type="button"
+                    class="chatbot-fab ${chatState.isOpen ? 'active' : ''}"
+                    id="chatbot-toggle-btn"
+                    aria-label="${chatState.isOpen ? 'Close chat assistant' : 'Open chat assistant'}"
+                    aria-expanded="${chatState.isOpen ? 'true' : 'false'}"
+                >
+                    <span class="chatbot-fab-pulse"></span>
+                    <span class="chatbot-fab-icon">
+                        <i class='bx ${chatState.isOpen ? 'bx-x' : 'bx-bot'}'></i>
+                    </span>
+                    <span class="chatbot-fab-copy">
+                        <strong>Better Assistant</strong>
+                        <small>AI + Global Chat</small>
+                    </span>
+                </button>
+            </div>
+        `;
+    },
+
+    renderAssistantChatPanel(chatState = {}) {
+        const messages = Array.isArray(chatState.assistantMessages) ? chatState.assistantMessages : [];
+        const prompts = Array.isArray(chatState.quickPrompts) ? chatState.quickPrompts : [];
+
+        return `
+            <div class="chatbot-meta-row">
+                <div class="chatbot-status-pill">
+                    <span class="chatbot-status-dot"></span>
+                    <span>Better Assistant mock mode</span>
+                </div>
+                <small>UI ready for backend integration</small>
+            </div>
+
+            ${prompts.length ? `
+                <div class="chatbot-prompt-strip">
+                    ${prompts.map((prompt) => `
+                        <button type="button" class="chatbot-prompt-chip" data-chat-prompt="${escapeHtml(prompt)}">${escapeHtml(prompt)}</button>
+                    `).join('')}
+                </div>
+            ` : ''}
+
+            <div class="chatbot-message-list assistant" id="chatbot-assistant-messages">
+                ${this.renderAssistantMessages(messages)}
+                ${chatState.assistantTyping ? `
+                    <div class="chatbot-message-row">
+                        <div class="chatbot-avatar assistant">BI</div>
+                        <div class="chatbot-message assistant typing">
+                            <span></span><span></span><span></span>
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+
+            ${renderChatComposer({
+                formId: 'chatbot-assistant-form',
+                inputId: 'chatbot-assistant-input',
+                placeholder: 'Ask Better Assistant anything about work, tasks, or ideas...',
+                buttonLabel: 'Send',
+                buttonIcon: 'bx-send'
+            })}
+        `;
+    },
+
+    renderAssistantMessages(messages = []) {
+        if (!messages.length) {
+            return `
+                <div class="chatbot-empty-state">
+                    <i class='bx bx-message-rounded-dots'></i>
+                    <h4>Start a mock assistant conversation</h4>
+                    <p>This widget is UI-only for now, but the structure is ready for future AI responses and backend hooks.</p>
+                </div>
+            `;
+        }
+
+        return messages.map((message) => {
+            const isUser = message.sender === 'user';
+            const senderLabel = isUser ? 'You' : (message.senderName || 'Better Assistant');
+
+            return `
+                <div class="chatbot-message-row ${isUser ? 'mine' : ''}">
+                    <div class="chatbot-avatar ${isUser ? 'user' : 'assistant'}">${escapeHtml(getInitials(senderLabel))}</div>
+                    <div class="chatbot-message-stack">
+                        <div class="chatbot-message-meta">
+                            <strong>${escapeHtml(senderLabel)}</strong>
+                            <span>${escapeHtml(message.time || '')}</span>
+                        </div>
+                        <div class="chatbot-message ${isUser ? 'user' : 'assistant'}">
+                            <p>${escapeHtml(message.text || '')}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    },
+
+    renderGlobalChatPanel(chatState = {}, currentUser = {}) {
+        const participants = Array.isArray(chatState.participants) ? chatState.participants : [];
+        const messages = Array.isArray(chatState.globalMessages) ? chatState.globalMessages : [];
+
+        return `
+            <div class="chatbot-meta-row">
+                <div class="chatbot-room-label">
+                    <i class='bx bx-hash'></i>
+                    <span>better-inside-all</span>
+                </div>
+                <small>${participants.length} participants</small>
+            </div>
+
+            <div class="chatbot-global-intro">
+                <strong>Global Chat</strong>
+                <p>A shared employee room mockup inspired by Slack and Teams. Messages below are local UI state only.</p>
+            </div>
+
+            <div class="chatbot-message-list global" id="chatbot-global-messages">
+                ${this.renderGlobalMessages(messages, currentUser)}
+            </div>
+
+            ${renderChatComposer({
+                formId: 'chatbot-global-form',
+                inputId: 'chatbot-global-input',
+                placeholder: 'Message everyone in the room...',
+                buttonLabel: 'Share',
+                buttonIcon: 'bx-paper-plane'
+            })}
+        `;
+    },
+
+    renderGlobalMessages(messages = [], currentUser = {}) {
+        if (!messages.length) {
+            return `
+                <div class="chatbot-empty-state">
+                    <i class='bx bx-world'></i>
+                    <h4>No messages yet</h4>
+                    <p>Once realtime is connected, this can become the shared employee room for quick updates and announcements.</p>
+                </div>
+            `;
+        }
+
+        return messages.map((message) => {
+            const isMine = String(message.userId || '') === String(currentUser.id || '');
+            return `
+                <div class="global-chat-row ${isMine ? 'mine' : ''}">
+                    <div class="chatbot-avatar ${isMine ? 'user' : 'teammate'}">${escapeHtml(getInitials(message.name || 'BI'))}</div>
+                    <div class="global-chat-bubble">
+                        <div class="global-chat-meta">
+                            <strong>${escapeHtml(isMine ? `${message.name || 'You'} (You)` : (message.name || 'Teammate'))}</strong>
+                            <span>${escapeHtml(message.time || '')}</span>
+                        </div>
+                        <p>${escapeHtml(message.text || '')}</p>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    },
+
     // ---- Dashboard Overview ----
     renderDashboard() {
         const user = AppState.currentUser;

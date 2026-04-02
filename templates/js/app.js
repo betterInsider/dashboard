@@ -18,6 +18,7 @@ const logoutBtns = document.querySelectorAll('#logout-btn, #dropdown-logout');
 const mainNav = document.getElementById('main-nav');
 const contentArea = document.getElementById('content-area');
 const pageTitle = document.getElementById('page-title');
+const chatbotRoot = document.getElementById('chatbot-root');
 
 // User details DOM
 const sidebarAvatar = document.getElementById('sidebar-user-avatar');
@@ -42,6 +43,329 @@ const confirmModalCancel = document.getElementById('confirm-modal-cancel');
 const confirmModalConfirm = document.getElementById('confirm-modal-confirm');
 
 let confirmModalAction = null;
+let chatWidgetState = null;
+
+function getChatStorageKey() {
+    return `betterInside_chat_widget_${AppState.currentUser?.id || 'guest'}`;
+}
+
+function formatChatTime(date = new Date()) {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function createAssistantMessage(sender, text, senderName) {
+    return {
+        id: `assistant-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+        sender,
+        senderName,
+        text,
+        time: formatChatTime()
+    };
+}
+
+function createGlobalMessage(user, text, time = formatChatTime()) {
+    return {
+        id: `global-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+        userId: user.id,
+        name: user.name,
+        text,
+        time
+    };
+}
+
+function buildDefaultGlobalMessages() {
+    const currentUser = AppState.currentUser || { id: 'guest', name: 'Teammate' };
+    const teammates = DB.users.filter((user) => String(user.id) !== String(currentUser.id));
+    const firstTeammate = teammates[0] || { id: 'ops', name: 'Ops Team' };
+    const secondTeammate = teammates[1] || { id: 'design', name: 'Design Team' };
+
+    return [
+        {
+            id: 'global-seed-1',
+            userId: firstTeammate.id,
+            name: firstTeammate.name,
+            text: 'Morning team. The client review deck is ready for comments before noon.',
+            time: '09:12 AM'
+        },
+        {
+            id: 'global-seed-2',
+            userId: secondTeammate.id,
+            name: secondTeammate.name,
+            text: 'Perfect. I will drop visual revisions after the standup so everyone can review in one place.',
+            time: '09:18 AM'
+        },
+        {
+            id: 'global-seed-3',
+            userId: currentUser.id,
+            name: currentUser.name,
+            text: 'I am using this mock global chat to sanity-check the new collaboration UI.',
+            time: '09:23 AM'
+        }
+    ];
+}
+
+function getDefaultChatWidgetState() {
+    const currentUser = AppState.currentUser || { id: 'guest', name: 'Teammate' };
+    const participantList = DB.users.length
+        ? DB.users.map((user) => ({ id: user.id, name: user.name, role: user.role }))
+        : [{ id: currentUser.id, name: currentUser.name, role: 'employee' }];
+
+    return {
+        isOpen: false,
+        activeTab: 'assistant',
+        assistantTyping: false,
+        assistantMessages: [
+            {
+                id: 'assistant-seed-1',
+                sender: 'assistant',
+                senderName: 'Better Assistant',
+                text: `Hi ${currentUser.name.split(' ')[0] || 'there'}, I am ready as a UI mock. Future integrations can plug project search, summaries, and AI actions directly into this panel.`,
+                time: 'Now'
+            }
+        ],
+        globalMessages: buildDefaultGlobalMessages(),
+        quickPrompts: [
+            'Summarize my current workload',
+            'Draft a client status update',
+            'What should I prioritize today?'
+        ],
+        participants: participantList,
+        unreadGlobalCount: 2,
+        drafts: {
+            assistant: '',
+            global: ''
+        }
+    };
+}
+
+function loadChatWidgetState() {
+    const baseState = getDefaultChatWidgetState();
+
+    try {
+        const savedState = JSON.parse(localStorage.getItem(getChatStorageKey()) || '{}');
+        const savedUnreadCount = Number(savedState.unreadGlobalCount);
+        return {
+            ...baseState,
+            isOpen: Boolean(savedState.isOpen),
+            activeTab: savedState.activeTab === 'global' ? 'global' : 'assistant',
+            assistantTyping: false,
+            assistantMessages: Array.isArray(savedState.assistantMessages) && savedState.assistantMessages.length
+                ? savedState.assistantMessages
+                : baseState.assistantMessages,
+            globalMessages: Array.isArray(savedState.globalMessages) && savedState.globalMessages.length
+                ? savedState.globalMessages
+                : baseState.globalMessages,
+            unreadGlobalCount: Number.isFinite(savedUnreadCount) ? savedUnreadCount : baseState.unreadGlobalCount,
+            drafts: {
+                assistant: '',
+                global: ''
+            }
+        };
+    } catch (error) {
+        return baseState;
+    }
+}
+
+function persistChatWidgetState() {
+    if (!AppState.currentUser || !chatWidgetState) return;
+
+    localStorage.setItem(getChatStorageKey(), JSON.stringify({
+        isOpen: chatWidgetState.isOpen,
+        activeTab: chatWidgetState.activeTab,
+        assistantMessages: chatWidgetState.assistantMessages,
+        globalMessages: chatWidgetState.globalMessages,
+        unreadGlobalCount: chatWidgetState.unreadGlobalCount
+    }));
+}
+
+function syncChatWidgetScroll() {
+    const assistantMessages = document.getElementById('chatbot-assistant-messages');
+    const globalMessages = document.getElementById('chatbot-global-messages');
+
+    if (assistantMessages) {
+        assistantMessages.scrollTop = assistantMessages.scrollHeight;
+    }
+    if (globalMessages) {
+        globalMessages.scrollTop = globalMessages.scrollHeight;
+    }
+}
+
+function focusActiveChatInput() {
+    if (!chatWidgetState?.isOpen) return;
+
+    const activeInput = document.getElementById(
+        chatWidgetState.activeTab === 'global'
+            ? 'chatbot-global-input'
+            : 'chatbot-assistant-input'
+    );
+
+    if (activeInput) {
+        activeInput.focus();
+        activeInput.setSelectionRange(activeInput.value.length, activeInput.value.length);
+    }
+}
+
+function renderChatWidget({ focusInput = false } = {}) {
+    if (!chatbotRoot || !AppState.currentUser || !chatWidgetState) {
+        if (chatbotRoot) chatbotRoot.innerHTML = '';
+        return;
+    }
+
+    chatbotRoot.innerHTML = Components.renderChatbotWidget(chatWidgetState);
+    bindChatWidgetEvents();
+
+    const assistantInput = document.getElementById('chatbot-assistant-input');
+    const globalInput = document.getElementById('chatbot-global-input');
+    if (assistantInput) assistantInput.value = chatWidgetState.drafts.assistant || '';
+    if (globalInput) globalInput.value = chatWidgetState.drafts.global || '';
+
+    requestAnimationFrame(() => {
+        syncChatWidgetScroll();
+        if (focusInput) focusActiveChatInput();
+    });
+}
+
+function initializeChatWidget() {
+    if (!AppState.currentUser) {
+        chatWidgetState = null;
+        if (chatbotRoot) chatbotRoot.innerHTML = '';
+        return;
+    }
+
+    chatWidgetState = loadChatWidgetState();
+    renderChatWidget();
+}
+
+function setChatWidgetOpen(isOpen) {
+    if (!chatWidgetState) return;
+    chatWidgetState.isOpen = isOpen;
+    persistChatWidgetState();
+    renderChatWidget({ focusInput: isOpen });
+}
+
+function setChatWidgetTab(tab) {
+    if (!chatWidgetState) return;
+    chatWidgetState.activeTab = tab === 'global' ? 'global' : 'assistant';
+    if (chatWidgetState.activeTab === 'global') {
+        chatWidgetState.unreadGlobalCount = 0;
+    }
+    persistChatWidgetState();
+    renderChatWidget({ focusInput: true });
+}
+
+function buildAssistantReply(prompt) {
+    const normalizedPrompt = String(prompt || '').trim().toLowerCase();
+
+    if (!normalizedPrompt) {
+        return 'I am in mock mode right now, but the UI is ready for future assistant workflows and backend actions.';
+    }
+
+    if (/task|milestone|deadline|priority/.test(normalizedPrompt)) {
+        return 'A live version can surface assigned tasks, upcoming deadlines, and suggested priorities directly from this workspace.';
+    }
+
+    if (/client|status|update|email/.test(normalizedPrompt)) {
+        return 'This panel is set up for future client-facing drafting flows like status updates, meeting recaps, and polished replies.';
+    }
+
+    if (/project|progress|report|summary/.test(normalizedPrompt)) {
+        return 'Once connected, I can turn project and task data into quick summaries, health signals, and next-step recommendations.';
+    }
+
+    if (/help|ticket|issue|support/.test(normalizedPrompt)) {
+        return 'A backend integration could pull helpdesk context here so teams can triage tickets without leaving the dashboard.';
+    }
+
+    return 'This is a frontend-only demo, but the layout is ready for AI responses, tool calls, and company-wide assistant workflows.';
+}
+
+function handleAssistantPrompt(prompt) {
+    const assistantInput = document.getElementById('chatbot-assistant-input');
+    if (!assistantInput || !chatWidgetState) return;
+
+    chatWidgetState.drafts.assistant = prompt;
+    assistantInput.value = prompt;
+    assistantInput.focus();
+    assistantInput.setSelectionRange(prompt.length, prompt.length);
+}
+
+function handleAssistantSubmit(event) {
+    event.preventDefault();
+    if (!chatWidgetState || !AppState.currentUser) return;
+
+    const input = document.getElementById('chatbot-assistant-input');
+    const message = input?.value.trim();
+    if (!message) return;
+
+    chatWidgetState.assistantMessages.push(createAssistantMessage('user', message, AppState.currentUser.name));
+    chatWidgetState.drafts.assistant = '';
+    chatWidgetState.assistantTyping = true;
+    chatWidgetState.isOpen = true;
+    chatWidgetState.activeTab = 'assistant';
+    persistChatWidgetState();
+    renderChatWidget({ focusInput: true });
+
+    window.setTimeout(() => {
+        if (!chatWidgetState) return;
+        chatWidgetState.assistantTyping = false;
+        chatWidgetState.assistantMessages.push(createAssistantMessage('assistant', buildAssistantReply(message), 'Better Assistant'));
+        persistChatWidgetState();
+        renderChatWidget();
+    }, 700);
+}
+
+function handleGlobalChatSubmit(event) {
+    event.preventDefault();
+    if (!chatWidgetState || !AppState.currentUser) return;
+
+    const input = document.getElementById('chatbot-global-input');
+    const message = input?.value.trim();
+    if (!message) return;
+
+    chatWidgetState.globalMessages.push(createGlobalMessage(AppState.currentUser, message));
+    chatWidgetState.drafts.global = '';
+    chatWidgetState.isOpen = true;
+    chatWidgetState.activeTab = 'global';
+    chatWidgetState.unreadGlobalCount = 0;
+    persistChatWidgetState();
+    renderChatWidget({ focusInput: true });
+}
+
+function bindChatWidgetEvents() {
+    const toggleButton = document.getElementById('chatbot-toggle-btn');
+    const closeButton = document.getElementById('chatbot-close-btn');
+    const assistantForm = document.getElementById('chatbot-assistant-form');
+    const globalForm = document.getElementById('chatbot-global-form');
+    const assistantInput = document.getElementById('chatbot-assistant-input');
+    const globalInput = document.getElementById('chatbot-global-input');
+
+    toggleButton?.addEventListener('click', () => setChatWidgetOpen(!chatWidgetState?.isOpen));
+    closeButton?.addEventListener('click', () => setChatWidgetOpen(false));
+    assistantForm?.addEventListener('submit', handleAssistantSubmit);
+    globalForm?.addEventListener('submit', handleGlobalChatSubmit);
+
+    assistantInput?.addEventListener('input', (event) => {
+        if (!chatWidgetState) return;
+        chatWidgetState.drafts.assistant = event.target.value;
+    });
+
+    globalInput?.addEventListener('input', (event) => {
+        if (!chatWidgetState) return;
+        chatWidgetState.drafts.global = event.target.value;
+    });
+
+    chatbotRoot?.querySelectorAll('[data-chat-tab]').forEach((button) => {
+        button.addEventListener('click', () => {
+            setChatWidgetTab(button.dataset.chatTab);
+        });
+    });
+
+    chatbotRoot?.querySelectorAll('[data-chat-prompt]').forEach((button) => {
+        button.addEventListener('click', () => {
+            handleAssistantPrompt(button.dataset.chatPrompt || '');
+        });
+    });
+}
 
 // Application Initialization
 async function init() {
@@ -63,6 +387,7 @@ async function init() {
         if (appScreen) showAppInfo();
         else if (window.location.pathname.startsWith('/login')) window.location.href = '/';
     } else {
+        initializeChatWidget();
         if (loginScreen) {
             loginScreen.classList.add('active');
         } else if (window.location.pathname === '/') {
@@ -114,6 +439,7 @@ function showAppInfo() {
     renderNotifications();
 
     navigateTo('dashboard', routes[u.role].find(r => r.id === 'dashboard').renderer);
+    initializeChatWidget();
 }
 
 function buildNavigation(role) {
