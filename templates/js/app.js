@@ -44,6 +44,50 @@ const confirmModalConfirm = document.getElementById('confirm-modal-confirm');
 
 let confirmModalAction = null;
 let chatWidgetState = null;
+let globalChatAttachmentFile = null;
+let globalChatLoading = false;
+
+const GLOBAL_CHAT_POLL_INTERVAL_MS = 2500;
+
+function getCookie(name) {
+    const cookieValue = `; ${document.cookie}`;
+    const parts = cookieValue.split(`; ${name}=`);
+    if (parts.length !== 2) return '';
+    return parts.pop().split(';').shift() || '';
+}
+
+function getCsrfToken() {
+    return getCookie('csrftoken') || window.CSRF_TOKEN || '';
+}
+
+async function parseJsonOrError(response) {
+    const contentType = response.headers.get('content-type') || '';
+
+    if (contentType.includes('application/json')) {
+        return response.json();
+    }
+
+    const text = await response.text();
+    if (response.status === 403) {
+        return {
+            success: false,
+            message: 'Your session security token expired. Refresh the page and try again.'
+        };
+    }
+    if (response.status === 401) {
+        return {
+            success: false,
+            message: 'Your session expired. Please log in again.'
+        };
+    }
+
+    return {
+        success: false,
+        message: text && text.trim().startsWith('<!DOCTYPE')
+            ? `Request failed with status ${response.status}.`
+            : (text || `Request failed with status ${response.status}.`)
+    };
+}
 
 function getChatStorageKey() {
     return `betterInside_chat_widget_${AppState.currentUser?.id || 'guest'}`;
@@ -63,52 +107,197 @@ function createAssistantMessage(sender, text, senderName) {
     };
 }
 
-function createGlobalMessage(user, text, time = formatChatTime()) {
+function buildChatParticipantList() {
+    if (DB.users.length) {
+        return DB.users.map((user) => ({
+            id: user.id,
+            name: user.name,
+            role: user.role
+        }));
+    }
+
+    const currentUser = AppState.currentUser || { id: 'guest', name: 'Teammate', role: 'employee' };
+    return [{ id: currentUser.id, name: currentUser.name, role: currentUser.role }];
+}
+
+function getLatestGlobalMessageId(messages = []) {
+    if (!messages.length) return 0;
+    return Number(messages[messages.length - 1]?.id) || 0;
+}
+
+function isGlobalChatVisible() {
+    return Boolean(chatWidgetState?.isOpen && chatWidgetState?.activeTab === 'global');
+}
+
+function syncChatParticipants() {
+    if (!chatWidgetState) return;
+    chatWidgetState.participants = buildChatParticipantList();
+}
+
+function clearGlobalAttachment({ rerender = false } = {}) {
+    globalChatAttachmentFile = null;
+    if (chatWidgetState) {
+        chatWidgetState.globalAttachmentName = '';
+    }
+    if (rerender) {
+        renderChatWidget({ focusInput: true });
+    }
+}
+
+function markGlobalChatSeen() {
+    if (!chatWidgetState) return;
+    chatWidgetState.lastSeenGlobalMessageId = getLatestGlobalMessageId(chatWidgetState.globalMessages);
+    chatWidgetState.unreadGlobalCount = 0;
+}
+
+function normalizeGlobalMessage(message = {}) {
+    const sender = DB.users.find((user) => String(user.id) === String(message.userId || message.user_id || ''));
     return {
-        id: `global-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-        userId: user.id,
-        name: user.name,
-        text,
-        time
+        id: Number(message.id) || 0,
+        userId: String(message.userId || message.user_id || ''),
+        name: message.name || sender?.name || 'Teammate',
+        avatar: message.avatar || sender?.avatar || '',
+        text: message.text || message.message || '',
+        time: message.time || formatChatTime(new Date(message.timestamp || Date.now())),
+        timestamp: message.timestamp || null,
+        fileUrl: message.fileUrl || '',
+        fileName: message.fileName || '',
+        fileContentType: message.fileContentType || '',
+        fileIsImage: Boolean(message.fileIsImage),
+        canDelete: Boolean(message.canDelete)
     };
 }
 
-function buildDefaultGlobalMessages() {
-    const currentUser = AppState.currentUser || { id: 'guest', name: 'Teammate' };
-    const teammates = DB.users.filter((user) => String(user.id) !== String(currentUser.id));
-    const firstTeammate = teammates[0] || { id: 'ops', name: 'Ops Team' };
-    const secondTeammate = teammates[1] || { id: 'design', name: 'Design Team' };
+function removeGlobalMessage(messageId) {
+    if (!chatWidgetState) return;
 
-    return [
-        {
-            id: 'global-seed-1',
-            userId: firstTeammate.id,
-            name: firstTeammate.name,
-            text: 'Morning team. The client review deck is ready for comments before noon.',
-            time: '09:12 AM'
-        },
-        {
-            id: 'global-seed-2',
-            userId: secondTeammate.id,
-            name: secondTeammate.name,
-            text: 'Perfect. I will drop visual revisions after the standup so everyone can review in one place.',
-            time: '09:18 AM'
-        },
-        {
-            id: 'global-seed-3',
-            userId: currentUser.id,
-            name: currentUser.name,
-            text: 'I am using this mock global chat to sanity-check the new collaboration UI.',
-            time: '09:23 AM'
+    chatWidgetState.globalMessages = chatWidgetState.globalMessages.filter(
+        (message) => String(message.id) !== String(messageId)
+    );
+    chatWidgetState.lastGlobalMessageId = getLatestGlobalMessageId(chatWidgetState.globalMessages);
+    markGlobalChatSeen();
+    persistChatWidgetState();
+}
+
+function appendGlobalMessages(messages = []) {
+    if (!chatWidgetState || !messages.length) return false;
+
+    const existingIds = new Set(chatWidgetState.globalMessages.map((message) => String(message.id)));
+    const freshMessages = messages
+        .map(normalizeGlobalMessage)
+        .filter((message) => message.id && !existingIds.has(String(message.id)));
+
+    if (!freshMessages.length) return false;
+
+    chatWidgetState.globalMessages = [...chatWidgetState.globalMessages, ...freshMessages]
+        .sort((left, right) => Number(left.id) - Number(right.id))
+        .slice(-100);
+    chatWidgetState.lastGlobalMessageId = getLatestGlobalMessageId(chatWidgetState.globalMessages);
+
+    if (isGlobalChatVisible()) {
+        markGlobalChatSeen();
+    } else {
+        const incomingFromOthers = freshMessages.filter((message) => String(message.userId) !== String(AppState.currentUser?.id || ''));
+        if (incomingFromOthers.length) {
+            chatWidgetState.unreadGlobalCount += incomingFromOthers.length;
         }
-    ];
+    }
+
+    persistChatWidgetState();
+    return true;
+}
+
+function replaceGlobalMessages(messages = []) {
+    if (!chatWidgetState) return;
+
+    chatWidgetState.globalMessages = messages
+        .map(normalizeGlobalMessage)
+        .filter((message) => message.id)
+        .sort((left, right) => Number(left.id) - Number(right.id))
+        .slice(-100);
+    chatWidgetState.lastGlobalMessageId = getLatestGlobalMessageId(chatWidgetState.globalMessages);
+    chatWidgetState.hasLoadedGlobalMessages = true;
+
+    if (chatWidgetState.lastSeenGlobalMessageId === null) {
+        chatWidgetState.lastSeenGlobalMessageId = chatWidgetState.lastGlobalMessageId;
+    }
+
+    if (isGlobalChatVisible()) {
+        markGlobalChatSeen();
+    } else {
+        chatWidgetState.unreadGlobalCount = chatWidgetState.globalMessages.filter((message) => (
+            Number(message.id) > Number(chatWidgetState.lastSeenGlobalMessageId || 0) &&
+            String(message.userId) !== String(AppState.currentUser?.id || '')
+        )).length;
+    }
+
+    persistChatWidgetState();
+}
+
+async function loadGlobalChatMessages({ afterId = null } = {}) {
+    if (!AppState.currentUser || !chatWidgetState || globalChatLoading) return;
+
+    globalChatLoading = true;
+
+    try {
+        const params = new URLSearchParams();
+        if (afterId) {
+            params.set('after_id', String(afterId));
+        } else {
+            params.set('limit', '50');
+        }
+
+        const response = await fetch(`/api/chat/messages?${params.toString()}`, {
+            cache: 'no-store'
+        });
+        if (!response.ok) return;
+
+        const payload = await response.json();
+        if (!payload.success) return;
+
+        syncChatParticipants();
+
+        const changed = afterId
+            ? appendGlobalMessages(payload.messages || [])
+            : (replaceGlobalMessages(payload.messages || []), true);
+
+        if (changed) {
+            renderChatWidget();
+        }
+    } catch (error) {
+        console.error('Failed to load global chat messages:', error);
+    } finally {
+        globalChatLoading = false;
+    }
+}
+
+async function pollGlobalChatMessages() {
+    if (!AppState.currentUser || !chatWidgetState) return;
+
+    if (!chatWidgetState.hasLoadedGlobalMessages) {
+        await loadGlobalChatMessages();
+        return;
+    }
+
+    await loadGlobalChatMessages({
+        afterId: chatWidgetState.lastGlobalMessageId || 0
+    });
+}
+
+function handleGlobalChatFileChange(event) {
+    if (!chatWidgetState) return;
+
+    const file = event.target.files?.[0] || null;
+    if (!file) return;
+
+    globalChatAttachmentFile = file;
+    chatWidgetState.globalAttachmentName = file.name;
+    renderChatWidget({ focusInput: true });
 }
 
 function getDefaultChatWidgetState() {
     const currentUser = AppState.currentUser || { id: 'guest', name: 'Teammate' };
-    const participantList = DB.users.length
-        ? DB.users.map((user) => ({ id: user.id, name: user.name, role: user.role }))
-        : [{ id: currentUser.id, name: currentUser.name, role: 'employee' }];
+    const participantList = buildChatParticipantList();
 
     return {
         isOpen: false,
@@ -123,14 +312,19 @@ function getDefaultChatWidgetState() {
                 time: 'Now'
             }
         ],
-        globalMessages: buildDefaultGlobalMessages(),
+        globalMessages: [],
         quickPrompts: [
             'Summarize my current workload',
             'Draft a client status update',
             'What should I prioritize today?'
         ],
         participants: participantList,
-        unreadGlobalCount: 2,
+        unreadGlobalCount: 0,
+        lastGlobalMessageId: 0,
+        lastSeenGlobalMessageId: null,
+        hasLoadedGlobalMessages: false,
+        globalAttachmentName: '',
+        globalSending: false,
         drafts: {
             assistant: '',
             global: ''
@@ -152,10 +346,10 @@ function loadChatWidgetState() {
             assistantMessages: Array.isArray(savedState.assistantMessages) && savedState.assistantMessages.length
                 ? savedState.assistantMessages
                 : baseState.assistantMessages,
-            globalMessages: Array.isArray(savedState.globalMessages) && savedState.globalMessages.length
-                ? savedState.globalMessages
-                : baseState.globalMessages,
             unreadGlobalCount: Number.isFinite(savedUnreadCount) ? savedUnreadCount : baseState.unreadGlobalCount,
+            lastSeenGlobalMessageId: Number.isFinite(Number(savedState.lastSeenGlobalMessageId))
+                ? Number(savedState.lastSeenGlobalMessageId)
+                : baseState.lastSeenGlobalMessageId,
             drafts: {
                 assistant: '',
                 global: ''
@@ -173,8 +367,8 @@ function persistChatWidgetState() {
         isOpen: chatWidgetState.isOpen,
         activeTab: chatWidgetState.activeTab,
         assistantMessages: chatWidgetState.assistantMessages,
-        globalMessages: chatWidgetState.globalMessages,
-        unreadGlobalCount: chatWidgetState.unreadGlobalCount
+        unreadGlobalCount: chatWidgetState.unreadGlobalCount,
+        lastSeenGlobalMessageId: chatWidgetState.lastSeenGlobalMessageId
     }));
 }
 
@@ -211,6 +405,7 @@ function renderChatWidget({ focusInput = false } = {}) {
         return;
     }
 
+    syncChatParticipants();
     chatbotRoot.innerHTML = Components.renderChatbotWidget(chatWidgetState);
     bindChatWidgetEvents();
 
@@ -228,17 +423,22 @@ function renderChatWidget({ focusInput = false } = {}) {
 function initializeChatWidget() {
     if (!AppState.currentUser) {
         chatWidgetState = null;
+        globalChatAttachmentFile = null;
         if (chatbotRoot) chatbotRoot.innerHTML = '';
         return;
     }
 
     chatWidgetState = loadChatWidgetState();
     renderChatWidget();
+    void loadGlobalChatMessages();
 }
 
 function setChatWidgetOpen(isOpen) {
     if (!chatWidgetState) return;
     chatWidgetState.isOpen = isOpen;
+    if (isOpen && chatWidgetState.activeTab === 'global') {
+        markGlobalChatSeen();
+    }
     persistChatWidgetState();
     renderChatWidget({ focusInput: isOpen });
 }
@@ -247,7 +447,7 @@ function setChatWidgetTab(tab) {
     if (!chatWidgetState) return;
     chatWidgetState.activeTab = tab === 'global' ? 'global' : 'assistant';
     if (chatWidgetState.activeTab === 'global') {
-        chatWidgetState.unreadGlobalCount = 0;
+        markGlobalChatSeen();
     }
     persistChatWidgetState();
     renderChatWidget({ focusInput: true });
@@ -314,21 +514,70 @@ function handleAssistantSubmit(event) {
     }, 700);
 }
 
-function handleGlobalChatSubmit(event) {
+async function handleGlobalChatSubmit(event) {
     event.preventDefault();
     if (!chatWidgetState || !AppState.currentUser) return;
 
     const input = document.getElementById('chatbot-global-input');
-    const message = input?.value.trim();
-    if (!message) return;
+    const message = input?.value.trim() || '';
+    if (!message && !globalChatAttachmentFile) return;
 
-    chatWidgetState.globalMessages.push(createGlobalMessage(AppState.currentUser, message));
-    chatWidgetState.drafts.global = '';
+    chatWidgetState.globalSending = true;
     chatWidgetState.isOpen = true;
     chatWidgetState.activeTab = 'global';
-    chatWidgetState.unreadGlobalCount = 0;
     persistChatWidgetState();
-    renderChatWidget({ focusInput: true });
+    renderChatWidget();
+
+    const formData = new FormData();
+    if (message) formData.append('message', message);
+    if (globalChatAttachmentFile) formData.append('file', globalChatAttachmentFile);
+
+    try {
+        const response = await fetch('/api/chat/messages', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken()
+            },
+            body: formData
+        });
+        const payload = await parseJsonOrError(response);
+        if (!response.ok || !payload.success) {
+            throw new Error(payload.message || 'Unable to send chat message.');
+        }
+
+        chatWidgetState.globalSending = false;
+        chatWidgetState.drafts.global = '';
+        clearGlobalAttachment();
+        appendGlobalMessages([payload.message]);
+        renderChatWidget({ focusInput: true });
+    } catch (error) {
+        chatWidgetState.globalSending = false;
+        renderChatWidget({ focusInput: true });
+        alert(error.message || 'Unable to send chat message right now.');
+    }
+}
+
+async function handleGlobalChatDelete(messageId) {
+    if (!chatWidgetState || !AppState.currentUser || !messageId) return;
+    if (!window.confirm('Delete this chat message?')) return;
+
+    try {
+        const response = await fetch(`/api/chat/messages/${messageId}`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': getCsrfToken()
+            }
+        });
+        const payload = await parseJsonOrError(response);
+        if (!response.ok || !payload.success) {
+            throw new Error(payload.message || 'Unable to delete chat message.');
+        }
+
+        removeGlobalMessage(messageId);
+        renderChatWidget();
+    } catch (error) {
+        alert(error.message || 'Unable to delete chat message right now.');
+    }
 }
 
 function bindChatWidgetEvents() {
@@ -338,11 +587,15 @@ function bindChatWidgetEvents() {
     const globalForm = document.getElementById('chatbot-global-form');
     const assistantInput = document.getElementById('chatbot-assistant-input');
     const globalInput = document.getElementById('chatbot-global-input');
+    const globalFileInput = document.getElementById('chatbot-global-file');
+    const globalFileRemove = document.getElementById('chatbot-global-file-remove');
 
     toggleButton?.addEventListener('click', () => setChatWidgetOpen(!chatWidgetState?.isOpen));
     closeButton?.addEventListener('click', () => setChatWidgetOpen(false));
     assistantForm?.addEventListener('submit', handleAssistantSubmit);
     globalForm?.addEventListener('submit', handleGlobalChatSubmit);
+    globalFileInput?.addEventListener('change', handleGlobalChatFileChange);
+    globalFileRemove?.addEventListener('click', () => clearGlobalAttachment({ rerender: true }));
 
     assistantInput?.addEventListener('input', (event) => {
         if (!chatWidgetState) return;
@@ -363,6 +616,12 @@ function bindChatWidgetEvents() {
     chatbotRoot?.querySelectorAll('[data-chat-prompt]').forEach((button) => {
         button.addEventListener('click', () => {
             handleAssistantPrompt(button.dataset.chatPrompt || '');
+        });
+    });
+
+    chatbotRoot?.querySelectorAll('[data-chat-delete-id]').forEach((button) => {
+        button.addEventListener('click', () => {
+            void handleGlobalChatDelete(button.dataset.chatDeleteId || '');
         });
     });
 }
@@ -416,6 +675,7 @@ const routes = {
         { id: 'projects', name: 'Projects', icon: 'bx-briefcase', renderer: Components.renderProjects },
         { id: 'tasks', name: 'Tasks Allotted', icon: 'bx-task', renderer: Components.renderTasks },
         { id: 'progress', name: 'Progress', icon: 'bx-trending-up', renderer: Components.renderProgress },
+        { id: 'expenses', name: 'Expenses', icon: 'bx-wallet', renderer: Components.renderExpenses },
         { id: 'helpdesk', name: 'Helpdesk', icon: 'bx-support', renderer: Components.renderHelpdesk },
         { id: 'skills', name: 'Skills & Roles', icon: 'bx-award', renderer: Components.renderSkills },
         { id: 'credentials', name: 'Credentials', icon: 'bx-key', renderer: Components.renderCredentialsPage },
@@ -778,6 +1038,44 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
 
             navigateTo('skills', routes[AppState.currentUser.role].find((route) => route.id === 'skills').renderer, 'Skills & Roles');
             alert('Employee skills updated successfully.');
+        });
+    } else if (routeId === 'expenses') {
+        const expenseDateInput = document.getElementById('expense-date');
+        if (expenseDateInput && !expenseDateInput.value) {
+            expenseDateInput.value = new Date().toISOString().split('T')[0];
+        }
+
+        document.getElementById('expense-form')?.addEventListener('submit', (event) => {
+            event.preventDefault();
+
+            const result = AppState.addExpense({
+                title: document.getElementById('expense-title')?.value,
+                amount: document.getElementById('expense-amount')?.value,
+                category: document.getElementById('expense-category')?.value,
+                expenseDate: document.getElementById('expense-date')?.value,
+                notes: document.getElementById('expense-notes')?.value
+            });
+
+            if (!result.success) {
+                alert(result.message || 'Unable to add expense.');
+                return;
+            }
+
+            navigateTo('expenses', routes.admin.find((route) => route.id === 'expenses').renderer, 'Expenses');
+        });
+
+        document.querySelectorAll('.btn-delete-expense').forEach((button) => {
+            button.addEventListener('click', () => {
+                showConfirmModal({
+                    title: 'Delete Expense',
+                    message: 'Delete this expense record from the tracker?',
+                    confirmLabel: 'Delete',
+                    onConfirm: () => {
+                        AppState.deleteExpense(button.dataset.id);
+                        navigateTo('expenses', routes.admin.find((route) => route.id === 'expenses').renderer, 'Expenses');
+                    }
+                });
+            });
         });
     } else if (routeId === 'helpdesk') {
         document.getElementById('btn-create-ticket')?.addEventListener('click', () => {
@@ -2002,11 +2300,15 @@ function updateThemeIcon(isDark) {
 // Start app
 init();
 
+setInterval(() => {
+    void pollGlobalChatMessages();
+}, GLOBAL_CHAT_POLL_INTERVAL_MS);
+
 // Global Sync Across Browser Tabs & Devices (Live Polling)
 setInterval(async () => {
     if (!AppState.currentUser) return;
     // Never poll on credential/form pages to avoid SQLite lock contention
-    const noPollingRoutes = ['credentials', 'add-project', 'add-task', 'add-client', 'add-contract', 'add-ticket', 'create-doc', 'profile'];
+    const noPollingRoutes = ['credentials', 'expenses', 'add-project', 'add-task', 'add-client', 'add-contract', 'add-ticket', 'create-doc', 'profile'];
     if (noPollingRoutes.includes(currentRouteId)) return;
     try {
         const resp = await fetch('/api/db?_t=' + Date.now(), { cache: 'no-store' });
@@ -2038,7 +2340,7 @@ setInterval(async () => {
             }
         } else if (document.getElementById('page-title')) {
             // Only auto-refresh list views — never overwrite form pages
-            const formPages = ['add-project', 'add-task', 'add-client', 'add-contract', 'add-ticket', 'create-doc', 'profile'];
+            const formPages = ['expenses', 'add-project', 'add-task', 'add-client', 'add-contract', 'add-ticket', 'create-doc', 'profile'];
             if (formPages.includes(currentRouteId)) return;
 
             if (currentRouteId === 'tasks') {
@@ -2047,6 +2349,8 @@ setInterval(async () => {
                 navigateTo('projects', routes[AppState.currentUser.role].find(r => r.id === 'projects').renderer, 'Projects');
             } else if (currentRouteId === 'clients' && AppState.currentUser.role === 'admin') {
                 navigateTo('clients', routes[AppState.currentUser.role].find(r => r.id === 'clients').renderer, 'Clients');
+            } else if (currentRouteId === 'expenses' && AppState.currentUser.role === 'admin') {
+                navigateTo('expenses', routes.admin.find(r => r.id === 'expenses').renderer, 'Expenses');
             } else if (currentRouteId === 'helpdesk' || currentRouteId === 'tickets') {
                 navigateTo('helpdesk', routes[AppState.currentUser.role].find(r => r.id === 'helpdesk').renderer, 'Helpdesk');
             } else if (currentRouteId === 'dashboard') {

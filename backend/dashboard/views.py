@@ -1,16 +1,19 @@
 import json
-from django.http import JsonResponse
-from django.contrib.auth import authenticate, login, logout
-from django.db import transaction
-from django.shortcuts import render, redirect
+import mimetypes
 
-# Model Imports from respective apps
+from django.contrib.auth.hashers import check_password
+from django.db import transaction
+from django.http import JsonResponse
+from django.shortcuts import redirect, render
+from django.utils import timezone
+from django.views.decorators.http import require_http_methods
+
 from accounts.models import CustomUser, Notification
 from clients.models import Client, Contract, Document
 from projects.models import Project
-from tasks.models import Task, Milestone, Ticket
-from django.shortcuts import render, redirect
-from django.contrib.auth.hashers import check_password
+from tasks.models import Milestone, Task, Ticket
+
+from .models import ChatMessage, Expense
 
 KNOWN_PASSWORDS = {
     'u1': 'YHthjo89',
@@ -35,130 +38,282 @@ COMPANY_INFO = {
         'UI and dashboard design',
         'Creative operations and task delivery',
         'Client project coordination and documentation',
-        'Internal workflow setup for teams handling multiple active accounts'
+        'Internal workflow setup for teams handling multiple active accounts',
     ],
     'operatingModel': [
         'Admin team creates clients, projects, contracts, and task plans',
         'Employees receive tasks, update milestone progress, and submit proof',
         'Approvals, credentials, documents, and notifications stay centralized',
-        'Internal tickets capture issues, blockers, and improvement ideas'
+        'Internal tickets capture issues, blockers, and improvement ideas',
     ],
     'companySnapshot': [
         'Homepage design first draft is referenced as the visual positioning source for the company profile',
         'Messaging emphasizes creative services supported by structured execution and delivery transparency',
-        'The company presentation blends brand building, digital experiences, and internal operations support'
+        'The company presentation blends brand building, digital experiences, and internal operations support',
     ],
     'values': [
         'Clear communication with clients and teammates',
         'Creative quality paired with disciplined execution',
-        'Visibility across projects, tasks, approvals, and credentials'
+        'Visibility across projects, tasks, approvals, and credentials',
     ],
     'leadership': [
-        { 'name': 'Apurva Garg', 'role': 'Founder, Management' },
-        { 'name': 'Rishabh Raj', 'role': 'Founder, Designer' }
+        {'name': 'Apurva Garg', 'role': 'Founder, Management'},
+        {'name': 'Rishabh Raj', 'role': 'Founder, Designer'},
     ],
     'contactEmail': 'betterinside@admin',
     'creatorProfile': {
         'name': 'Krishna Singh',
         'experience': 'Worked at TCS Bengalore',
-        'title': 'Fullstack Developer'
-    }
+        'title': 'Fullstack Developer',
+    },
 }
+
 
 def home_view(request):
     if not request.user.is_authenticated:
         return redirect('login')
     return render(request, 'index.html')
 
+
 def login_view(request):
     if request.user.is_authenticated:
         return redirect('home')
     return render(request, 'login.html')
 
+
+def _serialize_chat_message(chat_message):
+    file_url = chat_message.file.url if chat_message.file else ''
+    file_name = chat_message.original_file_name or (chat_message.file.name.rsplit('/', 1)[-1] if chat_message.file else '')
+    content_type = ''
+    if chat_message.file:
+        try:
+            content_type = chat_message.file.file.content_type or ''
+        except Exception:
+            content_type = ''
+        if not content_type:
+            content_type = mimetypes.guess_type(file_name)[0] or ''
+
+    sender_name = f'{chat_message.user.first_name} {chat_message.user.last_name}'.strip() or chat_message.user.username
+
+    return {
+        'id': chat_message.id,
+        'userId': str(chat_message.user_id),
+        'name': sender_name,
+        'avatar': chat_message.user.avatar or '',
+        'text': chat_message.message or '',
+        'time': timezone.localtime(chat_message.timestamp).strftime('%I:%M %p'),
+        'timestamp': timezone.localtime(chat_message.timestamp).isoformat(),
+        'fileUrl': file_url,
+        'fileName': file_name,
+        'fileContentType': content_type,
+        'fileIsImage': content_type.startswith('image/'),
+    }
+
+
+def _can_delete_chat_message(user, chat_message):
+    return getattr(user, 'role', '') == 'admin' or str(chat_message.user_id) == str(user.id)
+
+
+@require_http_methods(['GET', 'POST'])
+def api_chat_messages(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': 'Authentication required.'}, status=401)
+
+    if request.method == 'GET':
+        after_id = request.GET.get('after_id')
+        limit = min(max(int(request.GET.get('limit', 50)), 1), 100)
+
+        queryset = ChatMessage.objects.select_related('user')
+        if after_id:
+            queryset = queryset.filter(id__gt=after_id).order_by('id')
+            messages = list(queryset[:limit])
+        else:
+            messages = list(queryset.order_by('-id')[:limit])
+            messages.reverse()
+
+        latest_id = messages[-1].id if messages else (ChatMessage.objects.order_by('-id').values_list('id', flat=True).first() or 0)
+        serialized_messages = []
+        for message in messages:
+            serialized = _serialize_chat_message(message)
+            serialized['canDelete'] = _can_delete_chat_message(request.user, message)
+            serialized_messages.append(serialized)
+        return JsonResponse({
+            'success': True,
+            'messages': serialized_messages,
+            'latest_id': latest_id,
+        })
+
+    message_text = (request.POST.get('message') or '').strip()
+    uploaded_file = request.FILES.get('file')
+
+    if not message_text and not uploaded_file:
+        return JsonResponse({'success': False, 'message': 'Message text or file is required.'}, status=400)
+
+    chat_message = ChatMessage.objects.create(
+        user=request.user,
+        message=message_text,
+        file=uploaded_file,
+        original_file_name=uploaded_file.name if uploaded_file else '',
+    )
+    serialized_message = _serialize_chat_message(chat_message)
+    serialized_message['canDelete'] = _can_delete_chat_message(request.user, chat_message)
+    return JsonResponse({'success': True, 'message': serialized_message}, status=201)
+
+
+@require_http_methods(['DELETE'])
+def api_chat_message_detail(request, message_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': 'Authentication required.'}, status=401)
+
+    try:
+        chat_message = ChatMessage.objects.select_related('user').get(id=message_id)
+    except ChatMessage.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'Chat message not found.'}, status=404)
+
+    if not _can_delete_chat_message(request.user, chat_message):
+        return JsonResponse({'success': False, 'message': 'You can only delete your own messages.'}, status=403)
+
+    chat_message.delete()
+    return JsonResponse({'success': True, 'deletedId': message_id})
+
+
+@require_http_methods(['GET', 'POST'])
 def api_db(request):
     if request.method == 'GET':
-        # Only send avatar on full load — polling requests use ?_t= and skip heavy fields
         is_poll = '_t' in request.GET
         users = list(CustomUser.objects.all().values('id', 'username', 'role', 'avatar', 'skills', 'first_name', 'last_name', 'internal_password'))
-        for u in users:
-            u['id'] = str(u['id'])
-            u['name'] = f"{u['first_name']} {u['last_name']}".strip() or u['username']
-            u['password'] = u.get('internal_password') or KNOWN_PASSWORDS.get(u['id'], '')
+        for user in users:
+            user['id'] = str(user['id'])
+            user['name'] = f"{user['first_name']} {user['last_name']}".strip() or user['username']
+            user['password'] = user.get('internal_password') or KNOWN_PASSWORDS.get(user['id'], '')
             if is_poll:
-                u.pop('avatar', None)  # Skip heavy base64 avatars during polling
+                user.pop('avatar', None)
 
         clients = list(Client.objects.all().values('id', 'name', 'contact'))
+
         projects = list(Project.objects.all().values('id', 'name', 'description', 'client', 'status', 'due_date', 'progress', 'team'))
-        for p in projects:
-            p['dueDate'] = str(p['due_date']) if p['due_date'] else None
-        
+        for project in projects:
+            project['dueDate'] = str(project['due_date']) if project['due_date'] else None
+
         tasks = list(Task.objects.all().values('id', 'project_id', 'title', 'description', 'assigned_to', 'status', 'accepted', 'priority', 'progress', 'comments'))
-        for t in tasks:
-            t['projectId'] = t['project_id']
-            t['assignedTo'] = str(t['assigned_to'])
-            
+        for task in tasks:
+            task['projectId'] = task['project_id']
+            task['assignedTo'] = str(task['assigned_to'])
+
         contracts = list(Contract.objects.all().values(
-            'id', 'client_id', 'client_name', 'client_contact', 'project_details',
-            'service_scope', 'amount', 'date', 'start_date', 'end_date',
-            'payment_terms', 'terms_and_conditions'
+            'id',
+            'client_id',
+            'client_name',
+            'client_contact',
+            'project_details',
+            'service_scope',
+            'amount',
+            'date',
+            'start_date',
+            'end_date',
+            'payment_terms',
+            'terms_and_conditions',
         ))
-        for c in contracts:
-            c['clientId'] = c['client_id']
-            c['clientName'] = c['client_name']
-            c['clientContact'] = c['client_contact'] or ''
-            c['projectDetails'] = c['project_details']
-            c['serviceScope'] = c['service_scope'] or ''
-            c['startDate'] = c['start_date'] or ''
-            c['endDate'] = c['end_date'] or ''
-            c['paymentTerms'] = c['payment_terms'] or ''
-            c['termsAndConditions'] = c['terms_and_conditions'] or ''
+        for contract in contracts:
+            contract['clientId'] = contract['client_id']
+            contract['clientName'] = contract['client_name']
+            contract['clientContact'] = contract['client_contact'] or ''
+            contract['projectDetails'] = contract['project_details']
+            contract['serviceScope'] = contract['service_scope'] or ''
+            contract['startDate'] = contract['start_date'] or ''
+            contract['endDate'] = contract['end_date'] or ''
+            contract['paymentTerms'] = contract['payment_terms'] or ''
+            contract['termsAndConditions'] = contract['terms_and_conditions'] or ''
 
         documents = list(Document.objects.all().values('id', 'title', 'type', 'size'))
+
         milestones = list(Milestone.objects.all().values(
-            'id', 'task_id', 'title', 'description', 'start_date', 'delivery_date',
-            'deadline', 'status', 'order', 'admin_feedback', 'submitted_at',
-            'proof_image', 'proof_name', 'submission_note'
+            'id',
+            'task_id',
+            'title',
+            'description',
+            'start_date',
+            'delivery_date',
+            'deadline',
+            'status',
+            'order',
+            'admin_feedback',
+            'submitted_at',
+            'proof_image',
+            'proof_name',
+            'submission_note',
         ))
-        for m in milestones:
-            m['taskId'] = str(m['task_id'])
-            m['startDate'] = m['start_date'] or ''
-            m['deliveryDate'] = m['delivery_date'] or m['deadline'] or ''
-            m['adminFeedback'] = m['admin_feedback'] or ''
-            m['submittedAt'] = str(m['submitted_at']) if m['submitted_at'] else None
-            m['proofImage'] = m['proof_image'] or None
-            m['proofName'] = m['proof_name'] or ''
-            m['submissionNote'] = m['submission_note'] or ''
-            # Format deadline as readable string to avoid raw ISO date weirdness
-            if m['deadline']:
+        for milestone in milestones:
+            milestone['taskId'] = str(milestone['task_id'])
+            milestone['startDate'] = milestone['start_date'] or ''
+            milestone['deliveryDate'] = milestone['delivery_date'] or milestone['deadline'] or ''
+            milestone['adminFeedback'] = milestone['admin_feedback'] or ''
+            milestone['submittedAt'] = str(milestone['submitted_at']) if milestone['submitted_at'] else None
+            milestone['proofImage'] = milestone['proof_image'] or None
+            milestone['proofName'] = milestone['proof_name'] or ''
+            milestone['submissionNote'] = milestone['submission_note'] or ''
+            if milestone['deadline']:
                 try:
-                    from datetime import date
-                    d = m['deadline']
-                    m['deadline'] = d.strftime('%Y-%m-%d') if hasattr(d, 'strftime') else str(d)
+                    deadline = milestone['deadline']
+                    milestone['deadline'] = deadline.strftime('%Y-%m-%d') if hasattr(deadline, 'strftime') else str(deadline)
                 except Exception:
-                    m['deadline'] = str(m['deadline'])
+                    milestone['deadline'] = str(milestone['deadline'])
 
         notifications = list(Notification.objects.all().values('id', 'type', 'message', 'time', 'read', 'user_id'))
-        for n in notifications:
-            n['userId'] = str(n['user_id'])
+        for notification in notifications:
+            notification['userId'] = str(notification['user_id'])
 
         tickets = list(Ticket.objects.all().values(
-            'id', 'title', 'description', 'ticket_type', 'priority', 'status',
-            'created_by', 'created_by_name', 'assigned_to', 'assigned_to_name',
-            'client_id', 'client_name',
-            'project_id', 'project_name', 'created_at', 'admin_note'
+            'id',
+            'title',
+            'description',
+            'ticket_type',
+            'priority',
+            'status',
+            'created_by',
+            'created_by_name',
+            'assigned_to',
+            'assigned_to_name',
+            'client_id',
+            'client_name',
+            'project_id',
+            'project_name',
+            'created_at',
+            'admin_note',
         ))
-        for t in tickets:
-            t['ticketType'] = t['ticket_type']
-            t['createdBy'] = t['created_by']
-            t['createdByName'] = t['created_by_name']
-            t['assignedTo'] = t['assigned_to'] or ''
-            t['assignedToName'] = t['assigned_to_name'] or ''
-            t['clientId'] = t['client_id']
-            t['clientName'] = t['client_name']
-            t['projectId'] = t['project_id']
-            t['projectName'] = t['project_name']
-            t['createdAt'] = t['created_at']
-            t['adminNote'] = t['admin_note'] or ''
+        for ticket in tickets:
+            ticket['ticketType'] = ticket['ticket_type']
+            ticket['createdBy'] = ticket['created_by']
+            ticket['createdByName'] = ticket['created_by_name']
+            ticket['assignedTo'] = ticket['assigned_to'] or ''
+            ticket['assignedToName'] = ticket['assigned_to_name'] or ''
+            ticket['clientId'] = ticket['client_id']
+            ticket['clientName'] = ticket['client_name']
+            ticket['projectId'] = ticket['project_id']
+            ticket['projectName'] = ticket['project_name']
+            ticket['createdAt'] = ticket['created_at']
+            ticket['adminNote'] = ticket['admin_note'] or ''
+
+        expenses = list(Expense.objects.select_related('created_by').values(
+            'id',
+            'title',
+            'category',
+            'amount',
+            'expense_date',
+            'notes',
+            'created_by_id',
+            'created_by__first_name',
+            'created_by__last_name',
+            'created_by__username',
+            'created_at',
+        ))
+        for expense in expenses:
+            expense['amount'] = float(expense['amount'])
+            expense['expenseDate'] = str(expense['expense_date']) if expense['expense_date'] else ''
+            creator_name = f"{expense['created_by__first_name']} {expense['created_by__last_name']}".strip() or expense['created_by__username'] or ''
+            expense['createdBy'] = str(expense['created_by_id']) if expense['created_by_id'] else ''
+            expense['createdByName'] = creator_name
+            expense['createdAt'] = expense['created_at'].isoformat() if expense['created_at'] else ''
 
         company_info = dict(COMPANY_INFO)
         company_info['documents'] = documents
@@ -172,149 +327,176 @@ def api_db(request):
             'milestones': milestones,
             'notifications': notifications,
             'tickets': tickets,
-            'companyInfo': company_info
+            'expenses': expenses,
+            'companyInfo': company_info,
         })
-        
-    elif request.method == 'POST':
-        if not request.user.is_authenticated:
-            return JsonResponse({'success': False, 'message': 'Authentication required'}, status=401)
-        try:
-            data = json.loads(request.body)
-            
-            with transaction.atomic():
-                # Update users (for password/role/avatar changes)
-                if 'users' in data:
-                    for u in data['users']:
-                        try:
-                            user = CustomUser.objects.get(id=u['id'])
-                            if 'username' in u: user.username = u['username']
-                            if 'role' in u: user.role = u['role']
-                            if 'skills' in u: user.skills = u['skills'] or []
-                            if 'avatar' in u: user.avatar = u['avatar']
-                            if 'password' in u and u['password']:
-                                incoming_password = u['password']
-                                if not check_password(incoming_password, user.password):
-                                    user.set_password(incoming_password)
-                                    user.internal_password = incoming_password
-                            user.save()
-                        except (CustomUser.DoesNotExist, ValueError, KeyError):
-                            pass
 
-                if 'clients' in data:
-                    Client.objects.all().delete()
-                    for c in data['clients']:
-                        Client.objects.create(id=c.get('id', ''), name=c.get('name', ''), contact=c.get('contact', ''))
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': 'Authentication required'}, status=401)
 
-                if 'projects' in data:
-                    Project.objects.all().delete()
-                    for p in data['projects']:
-                        Project.objects.create(
-                            id=p.get('id', ''),
-                            name=p.get('name', ''),
-                            description=p.get('description', ''),
-                            client=p.get('client', ''),
-                            status=p.get('status', 'Pending'),
-                            due_date=p.get('dueDate') if p.get('dueDate') else None,
-                            progress=p.get('progress', 0),
-                            team=p.get('team', [])
-                        )
+    try:
+        data = json.loads(request.body)
 
-                if 'tasks' in data:
-                    Task.objects.all().delete()
-                    for t in data['tasks']:
-                        Task.objects.create(
-                            id=t.get('id', ''),
-                            project_id=t.get('projectId', ''),
-                            title=t.get('title', ''),
-                            description=t.get('description', ''),
-                            assigned_to=str(t.get('assignedTo', '')),
-                            status=t.get('status', 'todo'),
-                            accepted=t.get('accepted', False),
-                            priority=t.get('priority', 'medium'),
-                            progress=t.get('progress', 0),
-                            comments=t.get('comments', [])
-                        )
+        with transaction.atomic():
+            if 'users' in data:
+                for incoming_user in data['users']:
+                    try:
+                        user = CustomUser.objects.get(id=incoming_user['id'])
+                        if 'username' in incoming_user:
+                            user.username = incoming_user['username']
+                        if 'role' in incoming_user:
+                            user.role = incoming_user['role']
+                        if 'skills' in incoming_user:
+                            user.skills = incoming_user['skills'] or []
+                        if 'avatar' in incoming_user:
+                            user.avatar = incoming_user['avatar']
+                        if 'password' in incoming_user and incoming_user['password']:
+                            incoming_password = incoming_user['password']
+                            if not check_password(incoming_password, user.password):
+                                user.set_password(incoming_password)
+                                user.internal_password = incoming_password
+                        user.save()
+                    except (CustomUser.DoesNotExist, ValueError, KeyError):
+                        pass
 
-                if 'contracts' in data:
-                    Contract.objects.all().delete()
-                    for c in data['contracts']:
-                        Contract.objects.create(
-                            id=c.get('id', ''),
-                            client_id=c.get('clientId', ''),
-                            client_name=c.get('clientName', ''),
-                            client_contact=c.get('clientContact', ''),
-                            project_details=c.get('projectDetails', ''),
-                            service_scope=c.get('serviceScope', ''),
-                            amount=c.get('amount', ''),
-                            date=c.get('date', ''),
-                            start_date=c.get('startDate', ''),
-                            end_date=c.get('endDate', ''),
-                            payment_terms=c.get('paymentTerms', ''),
-                            terms_and_conditions=c.get('termsAndConditions', '')
-                        )
+            if 'clients' in data:
+                Client.objects.all().delete()
+                for client in data['clients']:
+                    Client.objects.create(id=client.get('id', ''), name=client.get('name', ''), contact=client.get('contact', ''))
 
-                if 'companyInfo' in data and 'documents' in data['companyInfo']:
-                    Document.objects.all().delete()
-                    for d in data['companyInfo']['documents']:
-                        Document.objects.create(id=d.get('id', ''), title=d.get('title', ''), type=d.get('type', ''), size=d.get('size', ''))
+            if 'projects' in data:
+                Project.objects.all().delete()
+                for project in data['projects']:
+                    Project.objects.create(
+                        id=project.get('id', ''),
+                        name=project.get('name', ''),
+                        description=project.get('description', ''),
+                        client=project.get('client', ''),
+                        status=project.get('status', 'Pending'),
+                        due_date=project.get('dueDate') if project.get('dueDate') else None,
+                        progress=project.get('progress', 0),
+                        team=project.get('team', []),
+                    )
 
-                if 'notifications' in data:
-                    Notification.objects.all().delete()
-                    for n in data['notifications']:
-                        Notification.objects.create(
-                            id=n.get('id', ''),
-                            type=n.get('type', ''),
-                            message=n.get('message', ''),
-                            time=n.get('time', ''),
-                            read=n.get('read', False),
-                            user_id=str(n.get('userId', ''))
-                        )
+            if 'tasks' in data:
+                Task.objects.all().delete()
+                for task in data['tasks']:
+                    Task.objects.create(
+                        id=task.get('id', ''),
+                        project_id=task.get('projectId', ''),
+                        title=task.get('title', ''),
+                        description=task.get('description', ''),
+                        assigned_to=str(task.get('assignedTo', '')),
+                        status=task.get('status', 'todo'),
+                        accepted=task.get('accepted', False),
+                        priority=task.get('priority', 'medium'),
+                        progress=task.get('progress', 0),
+                        comments=task.get('comments', []),
+                    )
 
-                if 'tickets' in data:
-                    Ticket.objects.all().delete()
-                    for t in data['tickets']:
-                        Ticket.objects.create(
-                            id=t.get('id', ''),
-                            title=t.get('title', ''),
-                            description=t.get('description', ''),
-                            ticket_type=t.get('ticketType', 'issue'),
-                            priority=t.get('priority', 'medium'),
-                            status=t.get('status', 'open'),
-                            created_by=t.get('createdBy', ''),
-                            created_by_name=t.get('createdByName', ''),
-                            assigned_to=t.get('assignedTo', ''),
-                            assigned_to_name=t.get('assignedToName', ''),
-                            client_id=t.get('clientId', ''),
-                            client_name=t.get('clientName', ''),
-                            project_id=t.get('projectId', ''),
-                            project_name=t.get('projectName', ''),
-                            created_at=t.get('createdAt', ''),
-                            admin_note=t.get('adminNote', '')
-                        )
+            if 'contracts' in data:
+                Contract.objects.all().delete()
+                for contract in data['contracts']:
+                    Contract.objects.create(
+                        id=contract.get('id', ''),
+                        client_id=contract.get('clientId', ''),
+                        client_name=contract.get('clientName', ''),
+                        client_contact=contract.get('clientContact', ''),
+                        project_details=contract.get('projectDetails', ''),
+                        service_scope=contract.get('serviceScope', ''),
+                        amount=contract.get('amount', ''),
+                        date=contract.get('date', ''),
+                        start_date=contract.get('startDate', ''),
+                        end_date=contract.get('endDate', ''),
+                        payment_terms=contract.get('paymentTerms', ''),
+                        terms_and_conditions=contract.get('termsAndConditions', ''),
+                    )
 
-                if 'milestones' in data:
-                    Milestone.objects.all().delete()
-                    for m in data['milestones']:
-                        Milestone.objects.create(
-                            id=m.get('id', ''),
-                            task_id=m.get('taskId', ''),
-                            title=m.get('title', ''),
-                            description=m.get('description', ''),
-                            start_date=m.get('startDate', ''),
-                            delivery_date=m.get('deliveryDate', ''),
-                            deadline=m.get('deadline'),
-                            status=m.get('status', 'not-started'),
-                            order=m.get('order', 0),
-                            admin_feedback=m.get('adminFeedback', ''),
-                            submitted_at=m.get('submittedAt'),
-                            proof_image=m.get('proofImage'),
-                            proof_name=m.get('proofName', ''),
-                            submission_note=m.get('submissionNote', '')
-                        )
+            if 'companyInfo' in data and 'documents' in data['companyInfo']:
+                Document.objects.all().delete()
+                for document in data['companyInfo']['documents']:
+                    Document.objects.create(
+                        id=document.get('id', ''),
+                        title=document.get('title', ''),
+                        type=document.get('type', ''),
+                        size=document.get('size', ''),
+                    )
 
-            return JsonResponse({'success': True})
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return JsonResponse({'success': False, 'message': str(e)}, status=400)
-    return JsonResponse({'success': False, 'message': 'Invalid method'}, status=405)
+            if 'notifications' in data:
+                Notification.objects.all().delete()
+                for notification in data['notifications']:
+                    Notification.objects.create(
+                        id=notification.get('id', ''),
+                        type=notification.get('type', ''),
+                        message=notification.get('message', ''),
+                        time=notification.get('time', ''),
+                        read=notification.get('read', False),
+                        user_id=str(notification.get('userId', '')),
+                    )
+
+            if 'tickets' in data:
+                Ticket.objects.all().delete()
+                for ticket in data['tickets']:
+                    Ticket.objects.create(
+                        id=ticket.get('id', ''),
+                        title=ticket.get('title', ''),
+                        description=ticket.get('description', ''),
+                        ticket_type=ticket.get('ticketType', 'issue'),
+                        priority=ticket.get('priority', 'medium'),
+                        status=ticket.get('status', 'open'),
+                        created_by=ticket.get('createdBy', ''),
+                        created_by_name=ticket.get('createdByName', ''),
+                        assigned_to=ticket.get('assignedTo', ''),
+                        assigned_to_name=ticket.get('assignedToName', ''),
+                        client_id=ticket.get('clientId', ''),
+                        client_name=ticket.get('clientName', ''),
+                        project_id=ticket.get('projectId', ''),
+                        project_name=ticket.get('projectName', ''),
+                        created_at=ticket.get('createdAt', ''),
+                        admin_note=ticket.get('adminNote', ''),
+                    )
+
+            if 'expenses' in data:
+                if getattr(request.user, 'role', '') != 'admin':
+                    return JsonResponse({'success': False, 'message': 'Only admin can manage expenses.'}, status=403)
+
+                Expense.objects.all().delete()
+                for expense in data['expenses']:
+                    created_by_id = expense.get('createdBy') or str(request.user.id)
+                    created_by = CustomUser.objects.filter(id=created_by_id).first()
+                    Expense.objects.create(
+                        id=expense.get('id', ''),
+                        title=expense.get('title', ''),
+                        category=expense.get('category', 'operations'),
+                        amount=expense.get('amount', 0) or 0,
+                        expense_date=expense.get('expenseDate') or expense.get('expense_date'),
+                        notes=expense.get('notes', ''),
+                        created_by=created_by,
+                    )
+
+            if 'milestones' in data:
+                Milestone.objects.all().delete()
+                for milestone in data['milestones']:
+                    Milestone.objects.create(
+                        id=milestone.get('id', ''),
+                        task_id=milestone.get('taskId', ''),
+                        title=milestone.get('title', ''),
+                        description=milestone.get('description', ''),
+                        start_date=milestone.get('startDate', ''),
+                        delivery_date=milestone.get('deliveryDate', ''),
+                        deadline=milestone.get('deadline'),
+                        status=milestone.get('status', 'not-started'),
+                        order=milestone.get('order', 0),
+                        admin_feedback=milestone.get('adminFeedback', ''),
+                        submitted_at=milestone.get('submittedAt'),
+                        proof_image=milestone.get('proofImage'),
+                        proof_name=milestone.get('proofName', ''),
+                        submission_note=milestone.get('submissionNote', ''),
+                    )
+
+        return JsonResponse({'success': True})
+    except Exception as error:
+        import traceback
+
+        traceback.print_exc()
+        return JsonResponse({'success': False, 'message': str(error)}, status=400)

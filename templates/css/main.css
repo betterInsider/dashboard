@@ -1557,6 +1557,13 @@ table tbody tr:last-child td {
     font-weight: 800;
     flex-shrink: 0;
     color: #fff;
+    overflow: hidden;
+}
+.chatbot-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
 }
 .chatbot-avatar.assistant {
     background: linear-gradient(135deg, var(--primary), var(--accent));
@@ -1580,14 +1587,35 @@ table tbody tr:last-child td {
 .global-chat-meta {
     display: flex;
     align-items: center;
-    gap: 5px;
+    justify-content: space-between;
+    gap: 8px;
     flex-wrap: wrap;
     font-size: 10px;
     color: var(--text-secondary);
 }
+.global-chat-meta-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap;
+}
 .chatbot-message-meta strong,
 .global-chat-meta strong {
     color: var(--text-primary);
+}
+.chatbot-message-delete {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s ease;
+}
+.chatbot-message-delete:hover {
+    color: #ef4444;
 }
 .chatbot-message,
 .global-chat-bubble {
@@ -1621,9 +1649,36 @@ table tbody tr:last-child td {
     margin: 0;
     font-size: 11px;
     line-height: 1.4;
+    white-space: pre-wrap;
 }
 .chatbot-message.user p {
     color: #fff;
+}
+.chatbot-attachment {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    text-decoration: none;
+}
+.chatbot-attachment.file {
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: rgba(148, 163, 184, 0.08);
+    color: var(--text-primary);
+    font-size: 11px;
+}
+.chatbot-attachment.image {
+    width: 100%;
+    display: block;
+}
+.chatbot-attachment.image img {
+    width: 100%;
+    max-width: 220px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    display: block;
 }
 .chatbot-empty-state {
     min-height: 140px;
@@ -1655,6 +1710,45 @@ table tbody tr:last-child td {
     align-items: center;
     gap: 8px;
 }
+.chatbot-composer-preview {
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: rgba(148, 163, 184, 0.08);
+    font-size: 11px;
+}
+.chatbot-composer-preview-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    color: var(--text-primary);
+}
+.chatbot-composer-preview-copy span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.chatbot-remove-attachment {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+}
+.chatbot-file-input {
+    display: none;
+}
+.chatbot-attach-btn {
+    flex-shrink: 0;
+}
 .chatbot-composer-field {
     flex: 1;
     border: 1px solid var(--border);
@@ -1680,6 +1774,10 @@ table tbody tr:last-child td {
     padding: 9px 10px;
     flex-shrink: 0;
     font-size: 11px;
+}
+.chatbot-send-btn[disabled] {
+    opacity: 0.7;
+    cursor: wait;
 }
 .chatbot-fab {
     position: relative;

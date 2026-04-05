@@ -11,6 +11,7 @@ export const DB = {
     ],
     projects: [],
     tasks: [],
+    expenses: [],
     clients: [
 
     ],
@@ -104,6 +105,17 @@ export const AppState = {
             createdAt: ticket.createdAt || ticket.created_at || '',
             adminNote: ticket.adminNote || ticket.admin_note || ''
         })).filter((ticket) => String(ticket.title || '').trim());
+        DB.expenses = (DB.expenses || []).map((expense) => ({
+            ...expense,
+            id: expense.id || `exp-${Date.now()}`,
+            title: String(expense.title || '').trim(),
+            category: expense.category || 'operations',
+            amount: Number(expense.amount) || 0,
+            expenseDate: expense.expenseDate || expense.expense_date || '',
+            notes: expense.notes || '',
+            createdBy: String(expense.createdBy || expense.created_by || ''),
+            createdByName: expense.createdByName || expense.created_by_name || ''
+        })).filter((expense) => expense.title && expense.expenseDate);
 
         DB.notifications = DB.notifications
             .map((notification, index) => ({
@@ -258,6 +270,10 @@ export const AppState = {
             }
         };
 
+        if (this.currentUser?.role === 'admin') {
+            payload.expenses = DB.expenses;
+        }
+
         return { ...payload, ...overrides };
     },
 
@@ -332,8 +348,74 @@ export const AppState = {
             .sort((a, b) => a.name.localeCompare(b.name));
     },
 
+    getExpenses() {
+        return [...(DB.expenses || [])].sort((a, b) => {
+            const dateCompare = String(b.expenseDate || '').localeCompare(String(a.expenseDate || ''));
+            if (dateCompare !== 0) return dateCompare;
+            return String(b.id).localeCompare(String(a.id));
+        });
+    },
+
+    getExpenseSummary() {
+        const expenses = this.getExpenses();
+        const now = new Date();
+        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const currentMonthExpenses = expenses.filter((expense) => String(expense.expenseDate || '').startsWith(currentMonth));
+
+        const monthlyTotals = expenses.reduce((acc, expense) => {
+            const monthKey = String(expense.expenseDate || '').slice(0, 7);
+            if (!monthKey) return acc;
+            if (!acc[monthKey]) acc[monthKey] = 0;
+            acc[monthKey] += Number(expense.amount) || 0;
+            return acc;
+        }, {});
+
+        return {
+            totalExpenseCount: expenses.length,
+            totalAmount: expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0),
+            currentMonthAmount: currentMonthExpenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0),
+            currentMonthCount: currentMonthExpenses.length,
+            monthlyTotals
+        };
+    },
+
     getProjectById(projectId) {
         return DB.projects.find((project) => String(project.id) === String(projectId)) || null;
+    },
+
+    addExpense(payload) {
+        const title = String(payload.title || '').trim();
+        const amount = Number(payload.amount);
+        const expenseDate = payload.expenseDate || '';
+
+        if (!title) {
+            return { success: false, message: 'Expense title is required.' };
+        }
+        if (!expenseDate) {
+            return { success: false, message: 'Expense date is required.' };
+        }
+        if (!Number.isFinite(amount) || amount <= 0) {
+            return { success: false, message: 'Enter a valid expense amount.' };
+        }
+
+        const newExpense = {
+            id: `exp-${Date.now()}`,
+            title,
+            category: payload.category || 'operations',
+            amount: Math.round(amount * 100) / 100,
+            expenseDate,
+            notes: String(payload.notes || '').trim(),
+            createdBy: String(this.currentUser?.id || ''),
+            createdByName: this.currentUser?.name || 'Admin'
+        };
+        DB.expenses.unshift(newExpense);
+        this.saveDB();
+        return { success: true, expense: newExpense };
+    },
+
+    deleteExpense(expenseId) {
+        DB.expenses = DB.expenses.filter((expense) => String(expense.id) !== String(expenseId));
+        this.saveDB();
     },
 
     updateProject(projectId, updates) {

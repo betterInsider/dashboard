@@ -19,15 +19,76 @@ function getInitials(name = '') {
         .toUpperCase() || 'BI';
 }
 
-function renderChatComposer({ formId, inputId, placeholder, buttonLabel, buttonIcon }) {
+function renderAvatar(avatarUrl, name, className = '') {
+    if (avatarUrl) {
+        return `<div class="chatbot-avatar ${className}"><img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(name || 'Avatar')}"></div>`;
+    }
+    return `<div class="chatbot-avatar ${className}">${escapeHtml(getInitials(name || 'BI'))}</div>`;
+}
+
+function renderGlobalAttachment(message = {}) {
+    if (!message.fileUrl) return '';
+
+    if (message.fileIsImage) {
+        return `
+            <a class="chatbot-attachment image" href="${escapeHtml(message.fileUrl)}" target="_blank" rel="noopener noreferrer">
+                <img src="${escapeHtml(message.fileUrl)}" alt="${escapeHtml(message.fileName || 'Attachment')}">
+            </a>
+        `;
+    }
+
     return `
+        <a class="chatbot-attachment file" href="${escapeHtml(message.fileUrl)}" target="_blank" rel="noopener noreferrer">
+            <i class='bx bx-file'></i>
+            <span>${escapeHtml(message.fileName || 'Open attachment')}</span>
+        </a>
+    `;
+}
+
+function renderChatComposer({
+    formId,
+    inputId,
+    placeholder,
+    buttonLabel,
+    buttonIcon,
+    allowFileUpload = false,
+    fileInputId = '',
+    attachmentName = '',
+    removeAttachmentId = '',
+    isSubmitting = false,
+}) {
+    return `
+        ${attachmentName ? `
+            <div class="chatbot-composer-preview">
+                <div class="chatbot-composer-preview-copy">
+                    <i class='bx bx-paperclip'></i>
+                    <span>${escapeHtml(attachmentName)}</span>
+                </div>
+                ${removeAttachmentId ? `
+                    <button type="button" class="chatbot-remove-attachment" id="${removeAttachmentId}" aria-label="Remove attachment">
+                        <i class='bx bx-x'></i>
+                    </button>
+                ` : ''}
+            </div>
+        ` : ''}
         <form class="chatbot-composer" id="${formId}">
+            ${allowFileUpload ? `
+                <input
+                    type="file"
+                    id="${fileInputId}"
+                    class="chatbot-file-input"
+                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar"
+                >
+                <label class="icon-btn chatbot-attach-btn" for="${fileInputId}" aria-label="Attach file">
+                    <i class='bx bx-paperclip'></i>
+                </label>
+            ` : ''}
             <div class="chatbot-composer-field">
                 <input type="text" id="${inputId}" placeholder="${escapeHtml(placeholder)}" autocomplete="off">
             </div>
-            <button type="submit" class="btn btn-primary chatbot-send-btn">
+            <button type="submit" class="btn btn-primary chatbot-send-btn" ${isSubmitting ? 'disabled' : ''}>
                 <i class='bx ${buttonIcon}'></i>
-                <span>${escapeHtml(buttonLabel)}</span>
+                <span>${escapeHtml(isSubmitting ? 'Sending...' : buttonLabel)}</span>
             </button>
         </form>
     `;
@@ -46,7 +107,7 @@ export const Components = {
                         <div>
                             <span class="chatbot-kicker">AI Workspace</span>
                             <h3>Better Assistant</h3>
-                            <p>${activeTab === 'assistant' ? 'Ask for help, draft ideas, or leave notes for future AI workflows.' : 'A shared mock chat room for internal team conversation.'}</p>
+                            <p>${activeTab === 'assistant' ? 'Ask for help, draft ideas, or leave notes for future AI workflows.' : 'A shared team room for internal updates, screenshots, and quick collaboration.'}</p>
                         </div>
                         <button type="button" class="icon-btn chatbot-close-btn" id="chatbot-close-btn" aria-label="Close chat">
                             <i class='bx bx-x'></i>
@@ -152,7 +213,7 @@ export const Components = {
 
             return `
                 <div class="chatbot-message-row ${isUser ? 'mine' : ''}">
-                    <div class="chatbot-avatar ${isUser ? 'user' : 'assistant'}">${escapeHtml(getInitials(senderLabel))}</div>
+                    ${renderAvatar('', senderLabel, isUser ? 'user' : 'assistant')}
                     <div class="chatbot-message-stack">
                         <div class="chatbot-message-meta">
                             <strong>${escapeHtml(senderLabel)}</strong>
@@ -173,16 +234,7 @@ export const Components = {
 
         return `
             <div class="chatbot-meta-row">
-                <div class="chatbot-room-label">
-                    <i class='bx bx-hash'></i>
-                    <span>better-inside-all</span>
-                </div>
                 <small>${participants.length} participants</small>
-            </div>
-
-            <div class="chatbot-global-intro">
-                <strong>Global Chat</strong>
-                <p>A shared employee room mockup inspired by Slack and Teams. Messages below are local UI state only.</p>
             </div>
 
             <div class="chatbot-message-list global" id="chatbot-global-messages">
@@ -192,9 +244,14 @@ export const Components = {
             ${renderChatComposer({
                 formId: 'chatbot-global-form',
                 inputId: 'chatbot-global-input',
-                placeholder: 'Message everyone in the room...',
+                placeholder: 'Message everyone in the room or attach a file...',
                 buttonLabel: 'Share',
-                buttonIcon: 'bx-paper-plane'
+                buttonIcon: 'bx-paper-plane',
+                allowFileUpload: true,
+                fileInputId: 'chatbot-global-file',
+                attachmentName: chatState.globalAttachmentName || '',
+                removeAttachmentId: 'chatbot-global-file-remove',
+                isSubmitting: Boolean(chatState.globalSending),
             })}
         `;
     },
@@ -214,13 +271,21 @@ export const Components = {
             const isMine = String(message.userId || '') === String(currentUser.id || '');
             return `
                 <div class="global-chat-row ${isMine ? 'mine' : ''}">
-                    <div class="chatbot-avatar ${isMine ? 'user' : 'teammate'}">${escapeHtml(getInitials(message.name || 'BI'))}</div>
+                    ${renderAvatar(message.avatar || '', message.name || 'Teammate', isMine ? 'user' : 'teammate')}
                     <div class="global-chat-bubble">
                         <div class="global-chat-meta">
-                            <strong>${escapeHtml(isMine ? `${message.name || 'You'} (You)` : (message.name || 'Teammate'))}</strong>
-                            <span>${escapeHtml(message.time || '')}</span>
+                            <div class="global-chat-meta-copy">
+                                <strong>${escapeHtml(isMine ? `${message.name || 'You'} (You)` : (message.name || 'Teammate'))}</strong>
+                                <span>${escapeHtml(message.time || '')}</span>
+                            </div>
+                            ${message.canDelete ? `
+                                <button type="button" class="chatbot-message-delete" data-chat-delete-id="${escapeHtml(String(message.id || ''))}" aria-label="Delete message">
+                                    <i class='bx bx-trash'></i>
+                                </button>
+                            ` : ''}
                         </div>
-                        <p>${escapeHtml(message.text || '')}</p>
+                        ${message.text ? `<p>${escapeHtml(message.text || '')}</p>` : ''}
+                        ${renderGlobalAttachment(message)}
                     </div>
                 </div>
             `;
@@ -1314,6 +1379,165 @@ export const Components = {
                         </thead>
                         <tbody>
                             ${rows}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    },
+
+    renderExpenses() {
+        const expenses = AppState.getExpenses();
+        const summary = AppState.getExpenseSummary();
+        const monthlyEntries = Object.entries(summary.monthlyTotals)
+            .sort((left, right) => right[0].localeCompare(left[0]))
+            .slice(0, 6);
+
+        const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const formatMonthLabel = (monthKey) => {
+            if (!monthKey) return 'Unknown month';
+            const [year, month] = monthKey.split('-');
+            const monthIndex = Number(month) - 1;
+            const date = new Date(Number(year), monthIndex, 1);
+            return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        };
+
+        return `
+            <div class="dashboard-grid credential-summary-grid">
+                <div class="stat-card primary">
+                    <div class="stat-card-info">
+                        <h3>Monthly Expenses</h3>
+                        <h2>${formatCurrency(summary.currentMonthAmount)}</h2>
+                        <p>${summary.currentMonthCount} entries in the current month</p>
+                    </div>
+                    <div class="stat-card-icon"><i class='bx bx-wallet-alt'></i></div>
+                </div>
+                <div class="stat-card info">
+                    <div class="stat-card-info">
+                        <h3>Total Tracked</h3>
+                        <h2>${formatCurrency(summary.totalAmount)}</h2>
+                        <p>Across all stored expense records</p>
+                    </div>
+                    <div class="stat-card-icon"><i class='bx bx-line-chart'></i></div>
+                </div>
+                <div class="stat-card warning">
+                    <div class="stat-card-info">
+                        <h3>Total Entries</h3>
+                        <h2>${summary.totalExpenseCount}</h2>
+                        <p>Operational, software, travel, and more</p>
+                    </div>
+                    <div class="stat-card-icon"><i class='bx bx-receipt'></i></div>
+                </div>
+            </div>
+
+            <div class="dashboard-detail-grid">
+                <div class="table-container">
+                    <div class="section-header">
+                        <h2><i class='bx bx-money-withdraw'></i> Add Expense</h2>
+                    </div>
+                    <p style="margin-bottom:16px; font-size:13px;">Track company spend here so admins can monitor where money is going and compare month-to-month totals.</p>
+                    <form id="expense-form">
+                        <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;">
+                            <div class="input-group">
+                                <label for="expense-title">Expense Title</label>
+                                <div class="input-wrapper">
+                                    <input type="text" id="expense-title" required placeholder="Example: Adobe Subscription">
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label for="expense-amount">Amount</label>
+                                <div class="input-wrapper">
+                                    <input type="number" id="expense-amount" min="0" step="0.01" required placeholder="4999.00">
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label for="expense-category">Category</label>
+                                <div class="input-wrapper">
+                                    <select id="expense-category" style="width:100%; border:none; background:transparent; color:var(--text-primary); outline:none;">
+                                        <option value="operations">Operations</option>
+                                        <option value="software">Software</option>
+                                        <option value="travel">Travel</option>
+                                        <option value="marketing">Marketing</option>
+                                        <option value="salary">Salary</option>
+                                        <option value="misc">Miscellaneous</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="input-group">
+                                <label for="expense-date">Expense Date</label>
+                                <div class="input-wrapper">
+                                    <input type="date" id="expense-date" required>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label for="expense-notes">Notes</label>
+                            <div class="input-wrapper">
+                                <textarea id="expense-notes" rows="4" placeholder="Optional note about the expense, vendor, or purpose." style="width:100%; border:none; background:transparent; color:var(--text-primary); outline:none; resize:vertical; font-family:inherit;"></textarea>
+                            </div>
+                        </div>
+                        <div style="display:flex; justify-content:flex-end; margin-top: 20px;">
+                            <button type="submit" class="btn btn-primary"><i class='bx bx-plus'></i> Add Expense</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="table-container">
+                    <div class="section-header">
+                        <h3>Monthly Breakdown</h3>
+                    </div>
+                    <div class="project-deadline-list">
+                        ${monthlyEntries.length ? monthlyEntries.map(([monthKey, total]) => `
+                            <div class="deadline-item">
+                                <div>
+                                    <strong>${formatMonthLabel(monthKey)}</strong>
+                                    <p>Tracked spend for the month</p>
+                                </div>
+                                <div class="deadline-meta">
+                                    <span>${formatCurrency(total)}</span>
+                                    <small>${expenses.filter((expense) => String(expense.expenseDate).startsWith(monthKey)).length} entries</small>
+                                </div>
+                            </div>
+                        `).join('') : '<p style="color:var(--text-secondary);">No monthly expenses tracked yet.</p>'}
+                    </div>
+                </div>
+
+                <div class="table-container" style="grid-column: 1 / -1;">
+                    <div class="section-header">
+                        <h2><i class='bx bx-spreadsheet'></i> Expense Log</h2>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Category</th>
+                                <th>Amount</th>
+                                <th>Date</th>
+                                <th>Added By</th>
+                                <th>Notes</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${expenses.length ? expenses.map((expense) => `
+                                <tr>
+                                    <td><strong>${escapeHtml(expense.title)}</strong></td>
+                                    <td><span class="status pending">${escapeHtml(expense.category)}</span></td>
+                                    <td>${formatCurrency(expense.amount)}</td>
+                                    <td>${escapeHtml(expense.expenseDate)}</td>
+                                    <td>${escapeHtml(expense.createdByName || 'Admin')}</td>
+                                    <td>${escapeHtml(expense.notes || '-')}</td>
+                                    <td>
+                                        <button type="button" class="icon-btn btn-delete-expense" data-id="${escapeHtml(expense.id)}" title="Delete Expense" style="color: var(--danger)">
+                                            <i class='bx bx-trash'></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('') : `
+                                <tr>
+                                    <td colspan="7" style="text-align:center; color:var(--text-secondary); padding:24px;">No expenses added yet.</td>
+                                </tr>
+                            `}
                         </tbody>
                     </table>
                 </div>
