@@ -3,14 +3,21 @@ from django.db import models
 
 
 class ChatMessage(models.Model):
+    MESSAGE_TYPE_CHOICES = (
+        ('text', 'Text'),
+        ('meeting_invite', 'Meeting Invite'),
+    )
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='chat_messages',
     )
+    message_type = models.CharField(max_length=30, choices=MESSAGE_TYPE_CHOICES, default='text')
     message = models.TextField(blank=True)
     file = models.FileField(upload_to='chat_uploads/%Y/%m/', blank=True, null=True)
     original_file_name = models.CharField(max_length=255, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:

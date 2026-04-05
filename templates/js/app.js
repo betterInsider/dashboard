@@ -41,13 +41,28 @@ const confirmModalMessage = document.getElementById('confirm-modal-message');
 const confirmModalClose = document.getElementById('confirm-modal-close');
 const confirmModalCancel = document.getElementById('confirm-modal-cancel');
 const confirmModalConfirm = document.getElementById('confirm-modal-confirm');
+const meetingModalOverlay = document.getElementById('meeting-modal-overlay');
+const meetingModalTitle = document.getElementById('meeting-modal-title');
+const meetingModalSubtitle = document.getElementById('meeting-modal-subtitle');
+const meetingModalStatus = document.getElementById('meeting-modal-status');
+const meetingModalFrame = document.getElementById('meeting-modal-frame');
+const meetingModalClose = document.getElementById('meeting-modal-close');
+const meetingModalEndButton = document.getElementById('meeting-modal-end-btn');
+const meetingModalOpenLink = document.getElementById('meeting-modal-open-link');
 
 let confirmModalAction = null;
 let chatWidgetState = null;
 let globalChatAttachmentFile = null;
 let globalChatLoading = false;
+let jitsiScriptPromise = null;
+let jitsiApi = null;
+let activeMeetingSession = null;
+let meetingEndingInProgress = false;
 
 const GLOBAL_CHAT_POLL_INTERVAL_MS = 2500;
+const JAAS_APP_ID = String(window.BETTER_INSIDE_CONFIG?.jaasAppId || 'vpaas-magic-cookie-148ee617d13a4f6b96bd2e6ce8c7e647').trim();
+const JITSI_DOMAIN = '8x8.vc';
+const JITSI_SCRIPT_SRC = `https://${JITSI_DOMAIN}/${JAAS_APP_ID}/external_api.js`;
 
 function getCookie(name) {
     const cookieValue = `; ${document.cookie}`;
@@ -95,6 +110,30 @@ function getChatStorageKey() {
 
 function formatChatTime(date = new Date()) {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function sanitizeMeetingRoomName(value = '') {
+    return String(value).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 120);
+}
+
+function buildMeetingApiRoomName(roomName = '') {
+    const safeRoomName = sanitizeMeetingRoomName(roomName);
+    return safeRoomName && JAAS_APP_ID ? `${JAAS_APP_ID}/${safeRoomName}` : '';
+}
+
+function buildMeetingJoinUrl(roomName = '') {
+    const safeRoomName = sanitizeMeetingRoomName(roomName);
+    return safeRoomName && JAAS_APP_ID ? `https://${JITSI_DOMAIN}/${JAAS_APP_ID}/${encodeURIComponent(safeRoomName)}` : '';
+}
+
+function generateMeetingRoomName() {
+    const userSlug = sanitizeMeetingRoomName((AppState.currentUser?.name || 'team').replace(/\s+/g, ''));
+    const timestamp = new Date().toISOString().replace(/\D/g, '').slice(0, 14);
+    const randomToken = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID().replace(/-/g, '').slice(0, 8)
+        : Math.random().toString(36).slice(2, 10);
+
+    return sanitizeMeetingRoomName(`BetterInside-${userSlug || 'Team'}-${timestamp}-${randomToken}`);
 }
 
 function createAssistantMessage(sender, text, senderName) {
@@ -152,11 +191,13 @@ function markGlobalChatSeen() {
 
 function normalizeGlobalMessage(message = {}) {
     const sender = DB.users.find((user) => String(user.id) === String(message.userId || message.user_id || ''));
+    const meetingRoomName = sanitizeMeetingRoomName(message.meetingRoomName || message.meeting_room_name || '');
     return {
         id: Number(message.id) || 0,
         userId: String(message.userId || message.user_id || ''),
         name: message.name || sender?.name || 'Teammate',
         avatar: message.avatar || sender?.avatar || '',
+        messageType: message.messageType || message.message_type || 'text',
         text: message.text || message.message || '',
         time: message.time || formatChatTime(new Date(message.timestamp || Date.now())),
         timestamp: message.timestamp || null,
@@ -164,7 +205,13 @@ function normalizeGlobalMessage(message = {}) {
         fileName: message.fileName || '',
         fileContentType: message.fileContentType || '',
         fileIsImage: Boolean(message.fileIsImage),
-        canDelete: Boolean(message.canDelete)
+        canDelete: Boolean(message.canDelete),
+        canEndMeeting: Boolean(message.canEndMeeting),
+        meetingRoomName,
+        meetingSubject: message.meetingSubject || message.meeting_subject || '',
+        meetingUrl: message.meetingUrl || buildMeetingJoinUrl(meetingRoomName),
+        meetingStatus: message.meetingStatus || message.meeting_status || 'live',
+        meetingEnded: Boolean(message.meetingEnded || String(message.meetingStatus || message.meeting_status || '').toLowerCase() === 'ended')
     };
 }
 
@@ -176,6 +223,29 @@ function removeGlobalMessage(messageId) {
     );
     chatWidgetState.lastGlobalMessageId = getLatestGlobalMessageId(chatWidgetState.globalMessages);
     markGlobalChatSeen();
+    persistChatWidgetState();
+}
+
+function updateGlobalMessage(messagePayload) {
+    if (!chatWidgetState || !messagePayload) return;
+
+    const normalized = normalizeGlobalMessage(messagePayload);
+    let found = false;
+    chatWidgetState.globalMessages = chatWidgetState.globalMessages.map((message) => {
+        if (String(message.id) === String(normalized.id)) {
+            found = true;
+            return normalized;
+        }
+        return message;
+    });
+
+    if (!found && normalized.id) {
+        chatWidgetState.globalMessages.push(normalized);
+        chatWidgetState.globalMessages.sort((left, right) => Number(left.id) - Number(right.id));
+    }
+
+    chatWidgetState.globalMessages = chatWidgetState.globalMessages.slice(-100);
+    chatWidgetState.lastGlobalMessageId = getLatestGlobalMessageId(chatWidgetState.globalMessages);
     persistChatWidgetState();
 }
 
@@ -274,14 +344,7 @@ async function loadGlobalChatMessages({ afterId = null } = {}) {
 async function pollGlobalChatMessages() {
     if (!AppState.currentUser || !chatWidgetState) return;
 
-    if (!chatWidgetState.hasLoadedGlobalMessages) {
-        await loadGlobalChatMessages();
-        return;
-    }
-
-    await loadGlobalChatMessages({
-        afterId: chatWidgetState.lastGlobalMessageId || 0
-    });
+    await loadGlobalChatMessages();
 }
 
 function handleGlobalChatFileChange(event) {
@@ -399,6 +462,200 @@ function focusActiveChatInput() {
     }
 }
 
+function closeMeetingModal() {
+    activeMeetingSession = null;
+    meetingEndingInProgress = false;
+
+    if (jitsiApi) {
+        try {
+            jitsiApi.dispose();
+        } catch (error) {
+            console.warn('Failed to dispose Jitsi instance cleanly.', error);
+        }
+        jitsiApi = null;
+    }
+
+    if (meetingModalFrame) {
+        meetingModalFrame.innerHTML = '';
+    }
+    if (meetingModalStatus) {
+        meetingModalStatus.textContent = 'Preparing meeting room...';
+        meetingModalStatus.classList.remove('error');
+    }
+    if (meetingModalEndButton) {
+        meetingModalEndButton.style.display = 'none';
+        meetingModalEndButton.disabled = false;
+    }
+    if (meetingModalOverlay) {
+        meetingModalOverlay.classList.remove('show');
+        setTimeout(() => {
+            if (!activeMeetingSession) {
+                meetingModalOverlay.classList.remove('active');
+            }
+        }, 150);
+    }
+}
+
+function requestMeetingModalClose() {
+    if (meetingEndingInProgress) return;
+
+    if (activeMeetingSession?.canEndMeeting && !activeMeetingSession?.meetingEnded) {
+        void handleEndActiveMeeting();
+        return;
+    }
+
+    closeMeetingModal();
+}
+
+async function ensureJitsiScript() {
+    if (window.JitsiMeetExternalAPI) return;
+
+    if (!jitsiScriptPromise) {
+        jitsiScriptPromise = new Promise((resolve, reject) => {
+            const existingScript = document.querySelector(`script[src="${JITSI_SCRIPT_SRC}"]`);
+            if (existingScript) {
+                existingScript.addEventListener('load', resolve, { once: true });
+                existingScript.addEventListener('error', () => reject(new Error('Unable to load Jitsi Meet.')), { once: true });
+                return;
+            }
+
+            const script = document.createElement('script');
+            script.src = JITSI_SCRIPT_SRC;
+            script.async = true;
+            script.onload = resolve;
+            script.onerror = () => reject(new Error('Unable to load Jitsi Meet.'));
+            document.head.appendChild(script);
+        });
+    }
+
+    await jitsiScriptPromise;
+}
+
+async function mountMeetingSession(session) {
+    if (!session?.roomName || !meetingModalFrame) return;
+    if (!JAAS_APP_ID) {
+        throw new Error('JAAS app ID is missing.');
+    }
+
+    if (meetingModalStatus) {
+        meetingModalStatus.textContent = 'Connecting to meeting room...';
+        meetingModalStatus.classList.remove('error');
+    }
+
+    try {
+        await ensureJitsiScript();
+        if (activeMeetingSession?.roomName !== session.roomName) return;
+
+        if (jitsiApi) {
+            jitsiApi.dispose();
+            jitsiApi = null;
+        }
+
+        meetingModalFrame.innerHTML = '';
+        jitsiApi = new window.JitsiMeetExternalAPI(JITSI_DOMAIN, {
+            roomName: buildMeetingApiRoomName(session.roomName),
+            parentNode: meetingModalFrame,
+            width: '100%',
+            height: '100%',
+            configOverwrite: {
+                prejoinPageEnabled: false
+            },
+            interfaceConfigOverwrite: {
+                DISABLE_JOIN_LEAVE_NOTIFICATIONS: true
+            },
+            userInfo: {
+                displayName: AppState.currentUser?.name || 'Better Inside',
+                email: AppState.currentUser?.username || ''
+            }
+        });
+
+        if (meetingModalStatus) {
+            meetingModalStatus.textContent = `Live in room ${session.roomName}`;
+        }
+
+        jitsiApi.addListener('videoConferenceJoined', () => {
+            if (meetingModalStatus) {
+                meetingModalStatus.textContent = `You joined ${session.subject || 'the live meeting'}`;
+            }
+        });
+        jitsiApi.addListener('readyToClose', requestMeetingModalClose);
+    } catch (error) {
+        console.error('Unable to start Jitsi meeting:', error);
+        if (meetingModalStatus) {
+            meetingModalStatus.textContent = 'Embedded meeting could not load. Use "Open in tab" instead.';
+            meetingModalStatus.classList.add('error');
+        }
+    }
+}
+
+function openMeetingModal(session = {}) {
+    const roomName = sanitizeMeetingRoomName(session.roomName || '');
+    const joinUrl = session.joinUrl || buildMeetingJoinUrl(roomName);
+    if (!roomName || !joinUrl) return;
+
+    activeMeetingSession = {
+        inviteId: session.inviteId || '',
+        roomName,
+        joinUrl,
+        subject: session.subject || 'Quick team meeting',
+        startedBy: session.startedBy || 'Teammate',
+        canEndMeeting: Boolean(session.canEndMeeting),
+        meetingEnded: Boolean(session.meetingEnded),
+    };
+
+    if (meetingModalTitle) {
+        meetingModalTitle.textContent = activeMeetingSession.subject;
+    }
+    if (meetingModalSubtitle) {
+        meetingModalSubtitle.textContent = `${activeMeetingSession.startedBy} shared this live room for the team.`;
+    }
+    if (meetingModalOpenLink) {
+        meetingModalOpenLink.href = activeMeetingSession.joinUrl;
+    }
+    if (meetingModalEndButton) {
+        meetingModalEndButton.style.display = activeMeetingSession.canEndMeeting && !activeMeetingSession.meetingEnded ? 'inline-flex' : 'none';
+        meetingModalEndButton.disabled = false;
+    }
+    if (meetingModalOverlay) {
+        meetingModalOverlay.classList.add('active');
+        requestAnimationFrame(() => meetingModalOverlay.classList.add('show'));
+    }
+
+    void mountMeetingSession(activeMeetingSession);
+}
+
+async function handleEndActiveMeeting() {
+    if (!activeMeetingSession?.inviteId || meetingEndingInProgress) return;
+
+    meetingEndingInProgress = true;
+    if (meetingModalEndButton) {
+        meetingModalEndButton.disabled = true;
+    }
+
+    try {
+        const response = await fetch(`/api/chat/messages/${activeMeetingSession.inviteId}/end-meeting`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken()
+            }
+        });
+        const payload = await parseJsonOrError(response);
+        if (!response.ok || !payload.success) {
+            throw new Error(payload.message || 'Unable to end the meeting.');
+        }
+
+        updateGlobalMessage(payload.message);
+        renderChatWidget();
+        closeMeetingModal();
+    } catch (error) {
+        meetingEndingInProgress = false;
+        if (meetingModalEndButton) {
+            meetingModalEndButton.disabled = false;
+        }
+        alert(error.message || 'Unable to end the meeting right now.');
+    }
+}
+
 function renderChatWidget({ focusInput = false } = {}) {
     if (!chatbotRoot || !AppState.currentUser || !chatWidgetState) {
         if (chatbotRoot) chatbotRoot.innerHTML = '';
@@ -424,6 +681,7 @@ function initializeChatWidget() {
     if (!AppState.currentUser) {
         chatWidgetState = null;
         globalChatAttachmentFile = null;
+        closeMeetingModal();
         if (chatbotRoot) chatbotRoot.innerHTML = '';
         return;
     }
@@ -557,6 +815,84 @@ async function handleGlobalChatSubmit(event) {
     }
 }
 
+async function handleGlobalMeetNow() {
+    if (!chatWidgetState || !AppState.currentUser || chatWidgetState.globalSending) return;
+    if (!JAAS_APP_ID) {
+        alert('8x8 meeting app ID is missing.');
+        return;
+    }
+
+    const roomName = generateMeetingRoomName();
+    const firstName = (AppState.currentUser.name || 'Team').split(' ')[0];
+    const meetingSubject = `${firstName}'s quick meeting`;
+    const formData = new FormData();
+
+    formData.append('messageType', 'meeting_invite');
+    formData.append('meetingRoomName', roomName);
+    formData.append('meetingSubject', meetingSubject);
+
+    chatWidgetState.globalSending = true;
+    chatWidgetState.isOpen = true;
+    chatWidgetState.activeTab = 'global';
+    persistChatWidgetState();
+    renderChatWidget();
+
+    try {
+        const response = await fetch('/api/chat/messages', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken()
+            },
+            body: formData
+        });
+        const payload = await parseJsonOrError(response);
+        if (!response.ok || !payload.success) {
+            throw new Error(payload.message || 'Unable to start the meeting.');
+        }
+
+        chatWidgetState.globalSending = false;
+        appendGlobalMessages([payload.message]);
+        renderChatWidget({ focusInput: true });
+
+        openMeetingModal({
+            inviteId: payload.message.id,
+            roomName: payload.message.meetingRoomName,
+            joinUrl: payload.message.meetingUrl,
+            subject: payload.message.meetingSubject || meetingSubject,
+            startedBy: payload.message.name || AppState.currentUser.name,
+            canEndMeeting: Boolean(payload.message.canEndMeeting),
+            meetingEnded: Boolean(payload.message.meetingEnded)
+        });
+    } catch (error) {
+        chatWidgetState.globalSending = false;
+        renderChatWidget({ focusInput: true });
+        alert(error.message || 'Unable to start the meeting right now.');
+    }
+}
+
+function handleJoinMeeting({ inviteId = '', roomName = '', joinUrl = '', subject = '', startedBy = '', canEndMeeting = false, meetingEnded = false } = {}) {
+    const safeRoomName = sanitizeMeetingRoomName(roomName);
+    const safeJoinUrl = joinUrl || buildMeetingJoinUrl(safeRoomName);
+    if (!safeRoomName || !safeJoinUrl) {
+        alert('Meeting room details are missing.');
+        return;
+    }
+    if (meetingEnded) {
+        alert('This meeting has already ended.');
+        return;
+    }
+
+    openMeetingModal({
+        inviteId,
+        roomName: safeRoomName,
+        joinUrl: safeJoinUrl,
+        subject: subject || 'Quick team meeting',
+        startedBy: startedBy || 'Teammate',
+        canEndMeeting,
+        meetingEnded
+    });
+}
+
 async function handleGlobalChatDelete(messageId) {
     if (!chatWidgetState || !AppState.currentUser || !messageId) return;
     if (!window.confirm('Delete this chat message?')) return;
@@ -585,6 +921,7 @@ function bindChatWidgetEvents() {
     const closeButton = document.getElementById('chatbot-close-btn');
     const assistantForm = document.getElementById('chatbot-assistant-form');
     const globalForm = document.getElementById('chatbot-global-form');
+    const meetNowButton = document.getElementById('chatbot-meet-now-btn');
     const assistantInput = document.getElementById('chatbot-assistant-input');
     const globalInput = document.getElementById('chatbot-global-input');
     const globalFileInput = document.getElementById('chatbot-global-file');
@@ -594,6 +931,9 @@ function bindChatWidgetEvents() {
     closeButton?.addEventListener('click', () => setChatWidgetOpen(false));
     assistantForm?.addEventListener('submit', handleAssistantSubmit);
     globalForm?.addEventListener('submit', handleGlobalChatSubmit);
+    meetNowButton?.addEventListener('click', () => {
+        void handleGlobalMeetNow();
+    });
     globalFileInput?.addEventListener('change', handleGlobalChatFileChange);
     globalFileRemove?.addEventListener('click', () => clearGlobalAttachment({ rerender: true }));
 
@@ -622,6 +962,20 @@ function bindChatWidgetEvents() {
     chatbotRoot?.querySelectorAll('[data-chat-delete-id]').forEach((button) => {
         button.addEventListener('click', () => {
             void handleGlobalChatDelete(button.dataset.chatDeleteId || '');
+        });
+    });
+
+    chatbotRoot?.querySelectorAll('[data-chat-join-room]').forEach((button) => {
+        button.addEventListener('click', () => {
+            handleJoinMeeting({
+                inviteId: button.dataset.chatInviteId || '',
+                roomName: button.dataset.chatJoinRoom || '',
+                joinUrl: button.dataset.chatJoinUrl || '',
+                subject: button.dataset.chatJoinSubject || '',
+                startedBy: button.dataset.chatJoinName || '',
+                canEndMeeting: button.dataset.chatCanEnd === 'true',
+                meetingEnded: button.dataset.chatMeetingEnded === 'true'
+            });
         });
     });
 }
@@ -2272,6 +2626,10 @@ function setupEventListeners() {
         if (confirmModalOverlay && event.target === confirmModalOverlay) {
             closeConfirmModal();
         }
+
+        if (meetingModalOverlay && event.target === meetingModalOverlay) {
+            requestMeetingModalClose();
+        }
     });
 
     confirmModalClose?.addEventListener('click', closeConfirmModal);
@@ -2280,6 +2638,11 @@ function setupEventListeners() {
         const action = confirmModalAction;
         closeConfirmModal();
         action?.();
+    });
+
+    meetingModalClose?.addEventListener('click', requestMeetingModalClose);
+    meetingModalEndButton?.addEventListener('click', () => {
+        void handleEndActiveMeeting();
     });
 }
 

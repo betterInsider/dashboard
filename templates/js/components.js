@@ -45,6 +45,48 @@ function renderGlobalAttachment(message = {}) {
     `;
 }
 
+function renderMeetingInvite(message = {}) {
+    const roomName = String(message.meetingRoomName || '').trim();
+    if (!roomName) return '';
+    const isEnded = Boolean(message.meetingEnded || String(message.meetingStatus || '').toLowerCase() === 'ended');
+
+    return `
+        <div class="chatbot-meeting-card">
+            <div class="chatbot-meeting-icon">
+                <i class='bx bx-video'></i>
+            </div>
+            <div class="chatbot-meeting-copy">
+                <span class="chatbot-meeting-kicker">Meet Now</span>
+                <strong>${escapeHtml(message.meetingSubject || 'Quick team meeting')}</strong>
+                <small>${escapeHtml((message.name || 'A teammate') + ' started a live room for the team.')}</small>
+            </div>
+        </div>
+        <div class="chatbot-meeting-actions">
+            ${isEnded ? `
+                <div class="chatbot-meeting-ended">
+                    <i class='bx bx-block'></i>
+                    <span>Meeting ended</span>
+                </div>
+            ` : `
+                <button
+                    type="button"
+                    class="btn btn-primary chatbot-meeting-action"
+                    data-chat-join-room="${escapeHtml(roomName)}"
+                    data-chat-join-subject="${escapeHtml(message.meetingSubject || 'Quick team meeting')}"
+                    data-chat-join-name="${escapeHtml(message.name || 'Teammate')}"
+                    data-chat-join-url="${escapeHtml(message.meetingUrl || '')}"
+                    data-chat-invite-id="${escapeHtml(String(message.id || ''))}"
+                    data-chat-can-end="${message.canEndMeeting ? 'true' : 'false'}"
+                    data-chat-meeting-ended="${isEnded ? 'true' : 'false'}"
+                >
+                    <i class='bx bx-video-plus'></i>
+                    <span>Join</span>
+                </button>
+            `}
+        </div>
+    `;
+}
+
 function renderChatComposer({
     formId,
     inputId,
@@ -235,6 +277,10 @@ export const Components = {
         return `
             <div class="chatbot-meta-row">
                 <small>${participants.length} participants</small>
+                <button type="button" class="btn btn-secondary chatbot-meet-now-btn" id="chatbot-meet-now-btn" ${chatState.globalSending ? 'disabled' : ''}>
+                    <i class='bx bx-video-plus'></i>
+                    <span>${chatState.globalSending ? 'Starting...' : 'Meet now'}</span>
+                </button>
             </div>
 
             <div class="chatbot-message-list global" id="chatbot-global-messages">
@@ -269,10 +315,11 @@ export const Components = {
 
         return messages.map((message) => {
             const isMine = String(message.userId || '') === String(currentUser.id || '');
+            const isMeetingInvite = String(message.messageType || 'text') === 'meeting_invite';
             return `
                 <div class="global-chat-row ${isMine ? 'mine' : ''}">
                     ${renderAvatar(message.avatar || '', message.name || 'Teammate', isMine ? 'user' : 'teammate')}
-                    <div class="global-chat-bubble">
+                    <div class="global-chat-bubble ${isMeetingInvite ? 'meeting' : ''}">
                         <div class="global-chat-meta">
                             <div class="global-chat-meta-copy">
                                 <strong>${escapeHtml(isMine ? `${message.name || 'You'} (You)` : (message.name || 'Teammate'))}</strong>
@@ -284,7 +331,8 @@ export const Components = {
                                 </button>
                             ` : ''}
                         </div>
-                        ${message.text ? `<p>${escapeHtml(message.text || '')}</p>` : ''}
+                        ${isMeetingInvite ? renderMeetingInvite(message) : ''}
+                        ${!isMeetingInvite && message.text ? `<p>${escapeHtml(message.text || '')}</p>` : ''}
                         ${renderGlobalAttachment(message)}
                     </div>
                 </div>

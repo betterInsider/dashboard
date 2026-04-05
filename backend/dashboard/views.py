@@ -1,6 +1,8 @@
 import json
 import mimetypes
+import re
 
+from django.conf import settings
 from django.contrib.auth.hashers import check_password
 from django.db import transaction
 from django.http import JsonResponse
@@ -69,16 +71,24 @@ COMPANY_INFO = {
 }
 
 
+def _get_sender_name(user):
+    return f'{user.first_name} {user.last_name}'.strip() or user.username
+
+
 def home_view(request):
     if not request.user.is_authenticated:
         return redirect('login')
-    return render(request, 'index.html')
+    return render(request, 'index.html', {
+        'JAAS_APP_ID': settings.JAAS_APP_ID,
+    })
 
 
 def login_view(request):
     if request.user.is_authenticated:
         return redirect('home')
-    return render(request, 'login.html')
+    return render(request, 'login.html', {
+        'JAAS_APP_ID': settings.JAAS_APP_ID,
+    })
 
 
 def _serialize_chat_message(chat_message):
@@ -93,13 +103,24 @@ def _serialize_chat_message(chat_message):
         if not content_type:
             content_type = mimetypes.guess_type(file_name)[0] or ''
 
-    sender_name = f'{chat_message.user.first_name} {chat_message.user.last_name}'.strip() or chat_message.user.username
+    sender_name = _get_sender_name(chat_message.user)
+    metadata = chat_message.metadata or {}
+    meeting_room_name = ''
+    meeting_subject = ''
+    meeting_url = ''
+    meeting_status = str(metadata.get('status') or 'live').strip() or 'live'
+    if chat_message.message_type == 'meeting_invite':
+        meeting_room_name = str(metadata.get('roomName') or '').strip()
+        meeting_subject = str(metadata.get('subject') or '').strip()
+        if meeting_room_name:
+            meeting_url = f'https://8x8.vc/{settings.JAAS_APP_ID}/{meeting_room_name}'
 
     return {
         'id': chat_message.id,
         'userId': str(chat_message.user_id),
         'name': sender_name,
         'avatar': chat_message.user.avatar or '',
+        'messageType': chat_message.message_type,
         'text': chat_message.message or '',
         'time': timezone.localtime(chat_message.timestamp).strftime('%I:%M %p'),
         'timestamp': timezone.localtime(chat_message.timestamp).isoformat(),
@@ -107,10 +128,19 @@ def _serialize_chat_message(chat_message):
         'fileName': file_name,
         'fileContentType': content_type,
         'fileIsImage': content_type.startswith('image/'),
+        'meetingRoomName': meeting_room_name,
+        'meetingSubject': meeting_subject,
+        'meetingUrl': meeting_url,
+        'meetingStatus': meeting_status,
+        'meetingEnded': meeting_status == 'ended',
     }
 
 
 def _can_delete_chat_message(user, chat_message):
+    return getattr(user, 'role', '') == 'admin' or str(chat_message.user_id) == str(user.id)
+
+
+def _can_manage_meeting_message(user, chat_message):
     return getattr(user, 'role', '') == 'admin' or str(chat_message.user_id) == str(user.id)
 
 
@@ -136,6 +166,9 @@ def api_chat_messages(request):
         for message in messages:
             serialized = _serialize_chat_message(message)
             serialized['canDelete'] = _can_delete_chat_message(request.user, message)
+            serialized['canEndMeeting'] = (
+                message.message_type == 'meeting_invite' and _can_manage_meeting_message(request.user, message)
+            )
             serialized_messages.append(serialized)
         return JsonResponse({
             'success': True,
@@ -144,19 +177,46 @@ def api_chat_messages(request):
         })
 
     message_text = (request.POST.get('message') or '').strip()
+    message_type = (request.POST.get('messageType') or 'text').strip() or 'text'
     uploaded_file = request.FILES.get('file')
+    metadata = {}
+
+    if message_type not in dict(ChatMessage.MESSAGE_TYPE_CHOICES):
+        return JsonResponse({'success': False, 'message': 'Unsupported chat message type.'}, status=400)
+
+    if message_type == 'meeting_invite':
+        requested_room_name = (request.POST.get('meetingRoomName') or '').strip()
+        sanitized_room_name = re.sub(r'[^A-Za-z0-9_-]', '', requested_room_name)
+        meeting_subject = (request.POST.get('meetingSubject') or '').strip()[:120]
+
+        if not sanitized_room_name:
+            return JsonResponse({'success': False, 'message': 'Meeting room name is required.'}, status=400)
+
+        metadata = {
+            'roomName': sanitized_room_name,
+            'subject': meeting_subject,
+            'status': 'live',
+        }
+
+        if not message_text:
+            message_text = f'{_get_sender_name(request.user)} started a live meeting.'
 
     if not message_text and not uploaded_file:
         return JsonResponse({'success': False, 'message': 'Message text or file is required.'}, status=400)
 
     chat_message = ChatMessage.objects.create(
         user=request.user,
+        message_type=message_type,
         message=message_text,
         file=uploaded_file,
         original_file_name=uploaded_file.name if uploaded_file else '',
+        metadata=metadata,
     )
     serialized_message = _serialize_chat_message(chat_message)
     serialized_message['canDelete'] = _can_delete_chat_message(request.user, chat_message)
+    serialized_message['canEndMeeting'] = (
+        chat_message.message_type == 'meeting_invite' and _can_manage_meeting_message(request.user, chat_message)
+    )
     return JsonResponse({'success': True, 'message': serialized_message}, status=201)
 
 
@@ -175,6 +235,34 @@ def api_chat_message_detail(request, message_id):
 
     chat_message.delete()
     return JsonResponse({'success': True, 'deletedId': message_id})
+
+
+@require_http_methods(['POST'])
+def api_chat_message_end_meeting(request, message_id):
+    if not request.user.is_authenticated:
+        return JsonResponse({'success': False, 'message': 'Authentication required.'}, status=401)
+
+    try:
+        chat_message = ChatMessage.objects.select_related('user').get(id=message_id)
+    except ChatMessage.DoesNotExist:
+        return JsonResponse({'success': False, 'message': 'Chat message not found.'}, status=404)
+
+    if chat_message.message_type != 'meeting_invite':
+        return JsonResponse({'success': False, 'message': 'This chat message is not a meeting invite.'}, status=400)
+
+    if not _can_manage_meeting_message(request.user, chat_message):
+        return JsonResponse({'success': False, 'message': 'You cannot end this meeting.'}, status=403)
+
+    metadata = dict(chat_message.metadata or {})
+    metadata['status'] = 'ended'
+    metadata['endedAt'] = timezone.now().isoformat()
+    chat_message.metadata = metadata
+    chat_message.save(update_fields=['metadata'])
+
+    serialized_message = _serialize_chat_message(chat_message)
+    serialized_message['canDelete'] = _can_delete_chat_message(request.user, chat_message)
+    serialized_message['canEndMeeting'] = False
+    return JsonResponse({'success': True, 'message': serialized_message})
 
 
 @require_http_methods(['GET', 'POST'])

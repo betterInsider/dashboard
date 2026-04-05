@@ -1,6 +1,7 @@
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
+from django.conf import settings
 
 from accounts.models import CustomUser
 
@@ -57,6 +58,7 @@ class GlobalChatApiTests(TestCase):
         self.assertTrue(payload['success'])
         self.assertEqual(ChatMessage.objects.count(), 1)
         self.assertEqual(payload['message']['text'], 'Team sync at 4 PM')
+        self.assertEqual(payload['message']['messageType'], 'text')
 
     def test_can_post_file_only_message(self):
         self.client.force_login(self.user)
@@ -69,6 +71,59 @@ class GlobalChatApiTests(TestCase):
         self.assertTrue(payload['success'])
         self.assertTrue(payload['message']['fileUrl'])
         self.assertEqual(payload['message']['fileName'], 'notes.txt')
+
+    def test_can_post_meeting_invite_message(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(self.url, {
+            'messageType': 'meeting_invite',
+            'meetingRoomName': 'BetterInside-QuickSync-123',
+            'meetingSubject': 'Quick Sync',
+        })
+
+        self.assertEqual(response.status_code, 201)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        self.assertEqual(payload['message']['messageType'], 'meeting_invite')
+        self.assertEqual(payload['message']['meetingRoomName'], 'BetterInside-QuickSync-123')
+        self.assertEqual(payload['message']['meetingSubject'], 'Quick Sync')
+        self.assertEqual(
+            payload['message']['meetingUrl'],
+            f'https://8x8.vc/{settings.JAAS_APP_ID}/BetterInside-QuickSync-123'
+        )
+        self.assertEqual(ChatMessage.objects.get().metadata['roomName'], 'BetterInside-QuickSync-123')
+
+    def test_meeting_creator_can_end_meeting(self):
+        meeting = ChatMessage.objects.create(
+            user=self.user,
+            message_type='meeting_invite',
+            message='Join now',
+            metadata={'roomName': 'BetterInside-QuickSync-123', 'subject': 'Quick Sync', 'status': 'live'},
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('api_chat_message_end_meeting', args=[meeting.id]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['success'])
+        meeting.refresh_from_db()
+        self.assertEqual(meeting.metadata['status'], 'ended')
+        self.assertTrue(payload['message']['meetingEnded'])
+        self.assertEqual(payload['message']['meetingStatus'], 'ended')
+
+    def test_other_employee_cannot_end_someone_elses_meeting(self):
+        meeting = ChatMessage.objects.create(
+            user=self.user,
+            message_type='meeting_invite',
+            message='Join now',
+            metadata={'roomName': 'BetterInside-QuickSync-123', 'subject': 'Quick Sync', 'status': 'live'},
+        )
+        self.client.force_login(self.other_user)
+
+        response = self.client.post(reverse('api_chat_message_end_meeting', args=[meeting.id]))
+
+        self.assertEqual(response.status_code, 403)
 
     def test_admin_can_delete_any_message(self):
         message = ChatMessage.objects.create(user=self.other_user, message='Remove me')

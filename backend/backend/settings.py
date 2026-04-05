@@ -157,3 +157,8 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 15728640  # 15 MB
 AUTH_USER_MODEL = 'accounts.CustomUser'
 
 STATIC_ROOT = BASE_DIR / 'static'
+
+JAAS_APP_ID = os.environ.get(
+    'JAAS_APP_ID',
+    'vpaas-magic-cookie-148ee617d13a4f6b96bd2e6ce8c7e647',
+)

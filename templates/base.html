@@ -39,6 +39,9 @@
     
     <script>
         window.CSRF_TOKEN = "{{ csrf_token }}";
+        window.BETTER_INSIDE_CONFIG = {
+            jaasAppId: "{{ JAAS_APP_ID|default:'vpaas-magic-cookie-148ee617d13a4f6b96bd2e6ce8c7e647'|escapejs }}"
+        };
     </script>
     {% block extra_head %}{% endblock %}
 </head>

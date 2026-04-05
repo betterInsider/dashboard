@@ -1105,6 +1105,56 @@ table tbody tr:last-child td {
     padding: 24px;
     overflow-y: auto;
 }
+.meeting-modal {
+    width: min(1100px, 96vw);
+    max-width: none;
+    height: min(88vh, 820px);
+}
+.meeting-modal-title-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.meeting-modal-title-wrap p {
+    font-size: 13px;
+}
+.meeting-modal-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.meeting-modal-link {
+    text-decoration: none;
+}
+.meeting-modal-body {
+    padding: 18px 20px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    flex: 1;
+}
+.meeting-modal-status {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+.meeting-modal-status.error {
+    color: var(--danger);
+}
+.meeting-modal-frame {
+    flex: 1;
+    min-height: 420px;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: #000;
+}
+.meeting-modal-frame iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+}
 
 /* Charts container */
 .chart-container {
@@ -1472,6 +1522,15 @@ table tbody tr:last-child td {
     color: var(--text-secondary);
     font-size: 10px;
 }
+.chatbot-meet-now-btn {
+    padding: 7px 10px;
+    border-radius: 999px;
+    font-size: 10px;
+}
+.chatbot-meet-now-btn[disabled] {
+    opacity: 0.7;
+    cursor: wait;
+}
 .chatbot-status-pill,
 .chatbot-room-label {
     display: inline-flex;
@@ -1638,11 +1697,25 @@ table tbody tr:last-child td {
     max-width: 78%;
     border-top-left-radius: 6px;
 }
+.global-chat-bubble.meeting {
+    background:
+        radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 38%),
+        linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(59, 130, 246, 0.08)),
+        var(--bg-main);
+    border-color: rgba(59, 130, 246, 0.2);
+}
 .global-chat-row.mine .global-chat-bubble {
     border-top-right-radius: 6px;
     border-top-left-radius: 18px;
     background: rgba(92, 60, 252, 0.1);
     border-color: rgba(92, 60, 252, 0.22);
+}
+.global-chat-row.mine .global-chat-bubble.meeting {
+    background:
+        radial-gradient(circle at top right, rgba(252, 60, 156, 0.12), transparent 36%),
+        linear-gradient(135deg, rgba(92, 60, 252, 0.14), rgba(252, 60, 156, 0.1)),
+        rgba(92, 60, 252, 0.08);
+    border-color: rgba(92, 60, 252, 0.24);
 }
 .chatbot-message p,
 .global-chat-bubble p {
@@ -1679,6 +1752,68 @@ table tbody tr:last-child td {
     border-radius: 10px;
     border: 1px solid var(--border);
     display: block;
+}
+.chatbot-meeting-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+.chatbot-meeting-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0ea5e9, #2563eb);
+    color: #fff;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+.chatbot-meeting-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+.chatbot-meeting-kicker {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #38bdf8;
+}
+.chatbot-meeting-copy strong {
+    font-size: 12px;
+    color: var(--text-primary);
+}
+.chatbot-meeting-copy small {
+    color: var(--text-secondary);
+    font-size: 10px;
+    line-height: 1.4;
+}
+.chatbot-meeting-actions {
+    margin-top: 10px;
+}
+.chatbot-meeting-action {
+    width: 100%;
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 11px;
+}
+.chatbot-meeting-ended {
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 9px 10px;
+    border-radius: 10px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    color: #fca5a5;
+    font-size: 11px;
+    font-weight: 700;
 }
 .chatbot-empty-state {
     min-height: 140px;
@@ -1934,6 +2069,19 @@ table tbody tr:last-child td {
     .chatbot-message-stack,
     .global-chat-bubble {
         max-width: 100%;
+    }
+    .meeting-modal {
+        width: 96vw;
+        height: 92vh;
+    }
+    .meeting-modal-header-actions {
+        gap: 6px;
+    }
+    .meeting-modal-link span {
+        display: none;
+    }
+    .meeting-modal-frame {
+        min-height: 320px;
     }
     
     /* Removed Mobile Blocker to allow responsive display

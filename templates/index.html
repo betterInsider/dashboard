@@ -114,6 +114,32 @@
         </main>
 
         <div id="chatbot-root"></div>
+
+        <div class="modal-overlay meeting-modal-overlay" id="meeting-modal-overlay">
+            <div class="modal meeting-modal">
+                <div class="modal-header">
+                    <div class="meeting-modal-title-wrap">
+                        <h3 id="meeting-modal-title">Live Meeting</h3>
+                        <p id="meeting-modal-subtitle">Join the room with your team.</p>
+                    </div>
+                    <div class="meeting-modal-header-actions">
+                        <button type="button" class="btn btn-danger btn-sm meeting-modal-end-btn" id="meeting-modal-end-btn" style="display: none;">
+                            <i class='bx bx-phone-off'></i>
+                            <span>End meeting</span>
+                        </button>
+                        <a href="https://8x8.vc/" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm meeting-modal-link" id="meeting-modal-open-link">
+                            <i class='bx bx-link-external'></i>
+                            <span>Open in tab</span>
+                        </a>
+                        <button type="button" class="close-modal" id="meeting-modal-close" aria-label="Close meeting modal">&times;</button>
+                    </div>
+                </div>
+                <div class="meeting-modal-body">
+                    <div class="meeting-modal-status" id="meeting-modal-status">Preparing meeting room...</div>
+                    <div class="meeting-modal-frame" id="meeting-modal-frame"></div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Dedicated pages are rendered in content-area -->
