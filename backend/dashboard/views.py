@@ -10,6 +10,7 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
+from accounts.avatar_utils import resolve_user_avatar
 from accounts.models import CustomUser, Notification
 from clients.models import Client, Contract, Document
 from projects.models import Project
@@ -119,7 +120,7 @@ def _serialize_chat_message(chat_message):
         'id': chat_message.id,
         'userId': str(chat_message.user_id),
         'name': sender_name,
-        'avatar': chat_message.user.avatar or '',
+        'avatar': resolve_user_avatar(chat_message.user.avatar),
         'messageType': chat_message.message_type,
         'text': chat_message.message or '',
         'time': timezone.localtime(chat_message.timestamp).strftime('%I:%M %p'),
@@ -274,6 +275,7 @@ def api_db(request):
             user['id'] = str(user['id'])
             user['name'] = f"{user['first_name']} {user['last_name']}".strip() or user['username']
             user['password'] = user.get('internal_password') or KNOWN_PASSWORDS.get(user['id'], '')
+            user['avatar'] = resolve_user_avatar(user.get('avatar'))
             if is_poll:
                 user.pop('avatar', None)
 
@@ -283,9 +285,10 @@ def api_db(request):
         for project in projects:
             project['dueDate'] = str(project['due_date']) if project['due_date'] else None
 
-        tasks = list(Task.objects.all().values('id', 'project_id', 'title', 'description', 'assigned_to', 'status', 'accepted', 'priority', 'progress', 'comments'))
+        tasks = list(Task.objects.all().values('id', 'project_id', 'title', 'description', 'due_date', 'assigned_to', 'status', 'accepted', 'priority', 'progress', 'comments'))
         for task in tasks:
             task['projectId'] = task['project_id']
+            task['dueDate'] = task['due_date'] or ''
             task['assignedTo'] = str(task['assigned_to'])
 
         contracts = list(Contract.objects.all().values(
@@ -474,6 +477,7 @@ def api_db(request):
                         project_id=task.get('projectId', ''),
                         title=task.get('title', ''),
                         description=task.get('description', ''),
+                        due_date=task.get('dueDate') or '',
                         assigned_to=str(task.get('assignedTo', '')),
                         status=task.get('status', 'todo'),
                         accepted=task.get('accepted', False),

@@ -1,4 +1,4 @@
-import { DB, AppState } from './data.js';
+import { DB, AppState, DEFAULT_USER_AVATAR, resolveUserAvatar } from './data.js';
 import { Components } from './components.js';
 
 // DOM Elements
@@ -196,7 +196,7 @@ function normalizeGlobalMessage(message = {}) {
         id: Number(message.id) || 0,
         userId: String(message.userId || message.user_id || ''),
         name: message.name || sender?.name || 'Teammate',
-        avatar: message.avatar || sender?.avatar || '',
+        avatar: resolveUserAvatar(message.avatar || sender?.avatar || DEFAULT_USER_AVATAR),
         messageType: message.messageType || message.message_type || 'text',
         text: message.text || message.message || '',
         time: message.time || formatChatTime(new Date(message.timestamp || Date.now())),
@@ -277,14 +277,46 @@ function appendGlobalMessages(messages = []) {
     return true;
 }
 
+function areGlobalMessagesEqual(currentMessages = [], nextMessages = []) {
+    if (currentMessages.length !== nextMessages.length) return false;
+
+    return currentMessages.every((message, index) => {
+        const nextMessage = nextMessages[index] || {};
+        return (
+            String(message.id || '') === String(nextMessage.id || '') &&
+            String(message.userId || '') === String(nextMessage.userId || '') &&
+            String(message.name || '') === String(nextMessage.name || '') &&
+            String(message.avatar || '') === String(nextMessage.avatar || '') &&
+            String(message.messageType || 'text') === String(nextMessage.messageType || 'text') &&
+            String(message.text || '') === String(nextMessage.text || '') &&
+            String(message.time || '') === String(nextMessage.time || '') &&
+            String(message.timestamp || '') === String(nextMessage.timestamp || '') &&
+            String(message.fileUrl || '') === String(nextMessage.fileUrl || '') &&
+            String(message.fileName || '') === String(nextMessage.fileName || '') &&
+            String(message.fileContentType || '') === String(nextMessage.fileContentType || '') &&
+            Boolean(message.fileIsImage) === Boolean(nextMessage.fileIsImage) &&
+            Boolean(message.canDelete) === Boolean(nextMessage.canDelete) &&
+            Boolean(message.canEndMeeting) === Boolean(nextMessage.canEndMeeting) &&
+            String(message.meetingRoomName || '') === String(nextMessage.meetingRoomName || '') &&
+            String(message.meetingSubject || '') === String(nextMessage.meetingSubject || '') &&
+            String(message.meetingUrl || '') === String(nextMessage.meetingUrl || '') &&
+            String(message.meetingStatus || '') === String(nextMessage.meetingStatus || '') &&
+            Boolean(message.meetingEnded) === Boolean(nextMessage.meetingEnded)
+        );
+    });
+}
+
 function replaceGlobalMessages(messages = []) {
     if (!chatWidgetState) return;
 
-    chatWidgetState.globalMessages = messages
+    const nextMessages = messages
         .map(normalizeGlobalMessage)
         .filter((message) => message.id)
         .sort((left, right) => Number(left.id) - Number(right.id))
         .slice(-100);
+    const changed = !areGlobalMessagesEqual(chatWidgetState.globalMessages, nextMessages);
+
+    chatWidgetState.globalMessages = nextMessages;
     chatWidgetState.lastGlobalMessageId = getLatestGlobalMessageId(chatWidgetState.globalMessages);
     chatWidgetState.hasLoadedGlobalMessages = true;
 
@@ -302,6 +334,7 @@ function replaceGlobalMessages(messages = []) {
     }
 
     persistChatWidgetState();
+    return changed;
 }
 
 async function loadGlobalChatMessages({ afterId = null } = {}) {
@@ -329,7 +362,7 @@ async function loadGlobalChatMessages({ afterId = null } = {}) {
 
         const changed = afterId
             ? appendGlobalMessages(payload.messages || [])
-            : (replaceGlobalMessages(payload.messages || []), true);
+            : replaceGlobalMessages(payload.messages || []);
 
         if (changed) {
             renderChatWidget();
@@ -460,6 +493,33 @@ function focusActiveChatInput() {
         activeInput.focus();
         activeInput.setSelectionRange(activeInput.value.length, activeInput.value.length);
     }
+}
+
+function getActiveChatInputSnapshot() {
+    const activeElement = document.activeElement;
+    if (!(activeElement instanceof HTMLInputElement)) return null;
+    if (!['chatbot-assistant-input', 'chatbot-global-input'].includes(activeElement.id)) return null;
+
+    return {
+        id: activeElement.id,
+        selectionStart: activeElement.selectionStart ?? activeElement.value.length,
+        selectionEnd: activeElement.selectionEnd ?? activeElement.value.length,
+        selectionDirection: activeElement.selectionDirection || 'none'
+    };
+}
+
+function restoreChatInputSnapshot(snapshot) {
+    if (!snapshot?.id) return false;
+
+    const input = document.getElementById(snapshot.id);
+    if (!(input instanceof HTMLInputElement)) return false;
+
+    const selectionStart = Math.min(snapshot.selectionStart ?? input.value.length, input.value.length);
+    const selectionEnd = Math.min(snapshot.selectionEnd ?? selectionStart, input.value.length);
+
+    input.focus();
+    input.setSelectionRange(selectionStart, selectionEnd, snapshot.selectionDirection || 'none');
+    return true;
 }
 
 function closeMeetingModal() {
@@ -662,6 +722,8 @@ function renderChatWidget({ focusInput = false } = {}) {
         return;
     }
 
+    const activeInputSnapshot = getActiveChatInputSnapshot();
+
     syncChatParticipants();
     chatbotRoot.innerHTML = Components.renderChatbotWidget(chatWidgetState);
     bindChatWidgetEvents();
@@ -673,7 +735,8 @@ function renderChatWidget({ focusInput = false } = {}) {
 
     requestAnimationFrame(() => {
         syncChatWidgetScroll();
-        if (focusInput) focusActiveChatInput();
+        const restoredFocus = restoreChatInputSnapshot(activeInputSnapshot);
+        if (focusInput && !restoredFocus) focusActiveChatInput();
     });
 }
 
@@ -1042,8 +1105,8 @@ function showAppInfo() {
     if (appScreen) appScreen.classList.add('active');
 
     const u = AppState.currentUser;
-    sidebarAvatar.src = u.avatar;
-    headerAvatar.src = u.avatar;
+    sidebarAvatar.src = resolveUserAvatar(u.avatar);
+    headerAvatar.src = resolveUserAvatar(u.avatar);
     sidebarName.textContent = u.name;
     dropdownName.textContent = u.name;
     sidebarRole.textContent = u.role.toUpperCase();
@@ -1603,6 +1666,11 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
             navigateTo('clients', routes.admin.find(r => r.id === 'clients').renderer, 'Clients');
         });
     } else if (routeId === 'add-task') {
+        const taskDueDateInput = document.getElementById('ft-due-date');
+        if (taskDueDateInput) {
+            taskDueDateInput.min = new Date().toISOString().split('T')[0];
+        }
+
         document.getElementById('task-form')?.addEventListener('submit', (e) => {
             e.preventDefault();
             
@@ -1627,6 +1695,7 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
                 document.getElementById('ft-assignee').value,
                 document.getElementById('ft-project').value,
                 document.getElementById('ft-priority').value,
+                document.getElementById('ft-due-date').value,
                 milestones
             );
             navigateTo('tasks', routes.admin.find(r => r.id === 'tasks').renderer, 'Tasks Allotted');
@@ -1790,12 +1859,22 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
         const uploadEl = document.getElementById('profile-upload');
         const previewEl = document.getElementById('profile-preview-large');
         const formEl = document.getElementById('profile-settings-form');
+        const submitButton = formEl?.querySelector('button[type="submit"]');
         
         let pendingAvatarData = null;
+
+        uploadEl?.addEventListener('click', () => {
+            uploadEl.value = '';
+        });
 
         uploadEl?.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) {
+                if (!file.type.startsWith('image/')) {
+                    alert('Please select a valid image file.');
+                    uploadEl.value = '';
+                    return;
+                }
                 const reader = new FileReader();
                 reader.onload = (ev) => {
                     pendingAvatarData = ev.target.result;
@@ -1813,6 +1892,45 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
             }
             navigateTo('dashboard', routes[AppState.currentUser.role].find(r => r.id === 'dashboard').renderer, 'Dashboard Overview');
         });
+
+        formEl?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+
+            const selectedFile = uploadEl?.files?.[0];
+            if (!pendingAvatarData && !selectedFile) {
+                alert('Please choose a new avatar image first.');
+                return;
+            }
+
+            submitButton?.setAttribute('disabled', 'disabled');
+
+            try {
+                let avatarData = pendingAvatarData;
+
+                if (!avatarData && selectedFile) {
+                    avatarData = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = (event) => resolve(event.target?.result || '');
+                        reader.onerror = () => reject(new Error('Could not read the selected image.'));
+                        reader.readAsDataURL(selectedFile);
+                    });
+                }
+
+                const result = await AppState.updateCurrentUserAvatar(avatarData);
+                if (!result?.success) {
+                    throw new Error(result?.message || 'Avatar update failed.');
+                }
+
+                pendingAvatarData = null;
+                if (uploadEl) uploadEl.value = '';
+                alert('Profile picture updated successfully.');
+            } catch (error) {
+                alert(error.message || 'Unable to update avatar right now.');
+            } finally {
+                submitButton?.removeAttribute('disabled');
+            }
+        }, { capture: true });
 
         document.getElementById('btn-cancel-profile')?.addEventListener('click', () => {
              navigateTo('dashboard', routes[AppState.currentUser.role].find(r => r.id === 'dashboard').renderer, 'Dashboard Overview');

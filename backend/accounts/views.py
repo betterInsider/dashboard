@@ -4,6 +4,8 @@ import logging
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.http import JsonResponse
 
+from .avatar_utils import resolve_user_avatar
+
 logger = logging.getLogger(__name__)
 UserModel = get_user_model()
 
@@ -43,7 +45,7 @@ def api_login(request):
                         'name': f"{user.first_name} {user.last_name}".strip() or user.username,
                         'username': user.username,
                         'role': user.role,
-                        'avatar': user.avatar,
+                        'avatar': resolve_user_avatar(user.avatar),
                         'skills': user.skills
                     }
                 })
@@ -76,7 +78,7 @@ def api_current_user(request):
                 'name': f"{user.first_name} {user.last_name}".strip() or user.username,
                 'username': user.username,
                 'role': user.role,
-                'avatar': user.avatar,
+                'avatar': resolve_user_avatar(user.avatar),
                 'skills': user.skills
             }
         })

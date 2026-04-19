@@ -1,13 +1,30 @@
+export const DEFAULT_USER_AVATAR = '/static/Logos/Logo Icon SVG.svg';
+
+export function resolveUserAvatar(avatar = '') {
+    const normalizedAvatar = String(avatar || '').trim();
+    if (!normalizedAvatar || normalizedAvatar.includes('ui-avatars.com')) {
+        return DEFAULT_USER_AVATAR;
+    }
+    return normalizedAvatar;
+}
+
+function normalizeUser(user = {}) {
+    return {
+        ...user,
+        avatar: resolveUserAvatar(user.avatar)
+    };
+}
+
 // Simulated Database
 export const DB = {
     users: [
-        { id: 'u1', name: 'Admin', username: 'betterinside@admin', role: 'admin', avatar: 'https://ui-avatars.com/api/?name=Admin', skills: ['System Admin'] },
-        { id: 'u2', name: 'Ayush Sahay', username: 'ayush@betterinside', role: 'employee', avatar: 'https://ui-avatars.com/api/?name=Ayush+Sahay', skills: ['Marketing', 'Research'] },
-        { id: 'u3', name: 'Krishna Kumar', username: 'krishna@betterinside', role: 'employee', avatar: 'https://ui-avatars.com/api/?name=Krishna+Kumar', skills: ['Backend Developer'] },
-        { id: 'u4', name: 'Ajay Kumar', username: 'ajay@betterinside', role: 'employee', avatar: 'https://ui-avatars.com/api/?name=Ajay+Kumar', skills: ['Backend Developer'] },
-        { id: 'u5', name: 'Apurva Garg', username: 'apurva@betterinside', role: 'admin', avatar: 'https://ui-avatars.com/api/?name=Apurva+Garg', skills: ['Founder', 'Management'] },
-        { id: 'u6', name: 'Rishabh Raj', username: 'rishabh@betterinside', role: 'admin', avatar: 'https://ui-avatars.com/api/?name=Rishabh+Raj', skills: ['Founder', 'Designer'] },
-        { id: 'u7', name: 'Md Asif', username: 'md@betterinside', role: 'employee', avatar: 'https://ui-avatars.com/api/?name=Md+Asif', skills: ['Backend Developer'] }
+        { id: 'u1', name: 'Admin', username: 'betterinside@admin', role: 'admin', avatar: DEFAULT_USER_AVATAR, skills: ['System Admin'] },
+        { id: 'u2', name: 'Ayush Sahay', username: 'ayush@betterinside', role: 'employee', avatar: DEFAULT_USER_AVATAR, skills: ['Marketing', 'Research'] },
+        { id: 'u3', name: 'Krishna Kumar', username: 'krishna@betterinside', role: 'employee', avatar: DEFAULT_USER_AVATAR, skills: ['Backend Developer'] },
+        { id: 'u4', name: 'Ajay Kumar', username: 'ajay@betterinside', role: 'employee', avatar: DEFAULT_USER_AVATAR, skills: ['Backend Developer'] },
+        { id: 'u5', name: 'Apurva Garg', username: 'apurva@betterinside', role: 'admin', avatar: DEFAULT_USER_AVATAR, skills: ['Founder', 'Management'] },
+        { id: 'u6', name: 'Rishabh Raj', username: 'rishabh@betterinside', role: 'admin', avatar: DEFAULT_USER_AVATAR, skills: ['Founder', 'Designer'] },
+        { id: 'u7', name: 'Md Asif', username: 'md@betterinside', role: 'employee', avatar: DEFAULT_USER_AVATAR, skills: ['Backend Developer'] }
     ],
     projects: [],
     tasks: [],
@@ -49,6 +66,7 @@ export const AppState = {
     activeViewClientId: null,
 
     normalizeDB() {
+        DB.users = (DB.users || []).map(normalizeUser);
         DB.clients = this.getClients();
         DB.contracts = (DB.contracts || []).map((contract) => ({
             ...contract,
@@ -74,6 +92,19 @@ export const AppState = {
             progress: Number(project.progress) || 0,
             team: Array.isArray(project.team) ? project.team : []
         })).filter((project) => project.name);
+        DB.tasks = (DB.tasks || []).map((task) => ({
+            ...task,
+            projectId: task.projectId || task.project_id || '',
+            title: String(task.title || '').trim(),
+            description: task.description || '',
+            dueDate: task.dueDate || task.due_date || '',
+            assignedTo: String(task.assignedTo || task.assigned_to || ''),
+            status: task.status || 'todo',
+            accepted: Boolean(task.accepted),
+            priority: task.priority || 'medium',
+            progress: Number(task.progress) || 0,
+            comments: Array.isArray(task.comments) ? task.comments : []
+        })).filter((task) => task.title);
         DB.milestones = (DB.milestones || []).map((milestone) => ({
             ...milestone,
             taskId: String(milestone.taskId || milestone.task_id || ''),
@@ -172,8 +203,8 @@ export const AppState = {
             });
             const result = await resp.json();
             if (result.success) {
-                this.currentUser = result.user;
-                localStorage.setItem('currentUser', JSON.stringify(result.user));
+                this.currentUser = normalizeUser(result.user);
+                localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
                 return true;
             }
         } catch (e) {
@@ -198,7 +229,7 @@ export const AppState = {
             if (userResp.ok) {
                 const userResult = await userResp.json();
                 if (userResult.success) {
-                    this.currentUser = userResult.user;
+                    this.currentUser = normalizeUser(userResult.user);
                 } else {
                     this.currentUser = null;
                 }
@@ -231,28 +262,40 @@ export const AppState = {
         }
     },
 
-    updateCurrentUserAvatar(dataUrl) {
-        if (!this.currentUser) return;
+    async updateCurrentUserAvatar(dataUrl) {
+        if (!this.currentUser) {
+            return { success: false, message: 'No logged-in user found.' };
+        }
 
         const user = DB.users.find(u => u.id === this.currentUser.id);
         if (user) {
-            user.avatar = dataUrl;
-            this.currentUser.avatar = dataUrl;
-            this.saveDB({
+            user.avatar = resolveUserAvatar(dataUrl);
+            this.currentUser.avatar = resolveUserAvatar(dataUrl);
+            localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
+
+            const saveResult = await this.saveDB({
                 users: [{
                     id: user.id,
                     username: user.username,
                     role: user.role,
-                    avatar: dataUrl
+                    avatar: user.avatar
                 }]
             });
+
+            if (!saveResult.success) {
+                return saveResult;
+            }
 
             // Local UI refresh for avatar elements
             const sidebarAvatar = document.getElementById('sidebar-user-avatar');
             const headerAvatar = document.getElementById('header-user-avatar');
-            if (sidebarAvatar) sidebarAvatar.src = dataUrl;
-            if (headerAvatar) headerAvatar.src = dataUrl;
+            if (sidebarAvatar) sidebarAvatar.src = user.avatar;
+            if (headerAvatar) headerAvatar.src = user.avatar;
+
+            return { success: true, avatar: user.avatar };
         }
+
+        return { success: false, message: 'User record not found.' };
     },
 
     buildSyncPayload(overrides = {}) {
@@ -280,7 +323,7 @@ export const AppState = {
     saveDB(overrides = {}) {
         this.normalizeDB();
         const payload = this.buildSyncPayload(overrides);
-        fetch('/api/db', {
+        const request = fetch('/api/db', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -291,10 +334,16 @@ export const AppState = {
             if (!res.ok) {
                 const text = await res.text();
                 console.error('saveDB failed:', res.status, text);
+                return { success: false, message: `Sync failed with status ${res.status}.` };
             }
-        }).catch(err => console.error("Sync failed:", err));
+            return { success: true };
+        }).catch(err => {
+            console.error("Sync failed:", err);
+            return { success: false, message: 'Network sync failed.' };
+        });
 
         localStorage.setItem('betterInside_DB', JSON.stringify(DB));
+        return request;
     },
 
     getTasksForUser(userId) {
@@ -766,12 +815,13 @@ export const AppState = {
         this.saveDB();
     },
 
-    addTask(title, desc, assignTo, projectId, priority, milestoneList = []) {
+    addTask(title, desc, assignTo, projectId, priority, dueDate = '', milestoneList = []) {
         const newTask = {
             id: 't' + Date.now(),
             projectId,
             title: title,
             description: desc,
+            dueDate: dueDate || '',
             assignedTo: assignTo,
             status: 'todo',
             accepted: false,
@@ -866,7 +916,7 @@ export const AppState = {
             t.comments.push({
                 senderId: userId,
                 sender: u.name,
-                avatar: u.avatar,
+                avatar: resolveUserAvatar(u.avatar),
                 text: text,
                 attachment: attachmentStr || null,
                 time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })

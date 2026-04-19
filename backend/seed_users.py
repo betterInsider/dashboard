@@ -7,13 +7,13 @@ django.setup()
 from accounts.models import CustomUser
 
 users_data = [
-    { 'id': 'u1', 'name': 'Admin', 'username': 'betterinside@admin', 'password': 'YHthjo89', 'role': 'admin', 'avatar': 'https://ui-avatars.com/api/?name=Admin', 'skills': ['System Admin'] },
-    { 'id': 'u2', 'name': 'Ayush Sahay', 'username': 'ayush@betterinside', 'password': 'Ghyvr45', 'role': 'employee', 'avatar': 'https://ui-avatars.com/api/?name=Ayush+Sahay', 'skills': ['Marketing', 'Research'] },
-    { 'id': 'u3', 'name': 'Krishna Kumar', 'username': 'krishna@betterinside', 'password': 'gGIGng34', 'role': 'employee', 'avatar': 'https://ui-avatars.com/api/?name=Krishna+Kumar', 'skills': ['Backend Developer'] },
-    { 'id': 'u4', 'name': 'Ajay Kumar', 'username': 'ajay@betterinside', 'password': 'AjKmr#99', 'role': 'employee', 'avatar': 'https://ui-avatars.com/api/?name=Ajay+Kumar', 'skills': ['Backend Developer'] },
-    { 'id': 'u5', 'name': 'Apurva Garg', 'username': 'apurva@betterinside', 'password': 'ApGrg$88', 'role': 'admin', 'avatar': 'https://ui-avatars.com/api/?name=Apurva+Garg', 'skills': ['Founder', 'Management'] },
-    { 'id': 'u6', 'name': 'Rishabh Raj', 'username': 'rishabh@betterinside', 'password': 'RsRj%77', 'role': 'admin', 'avatar': 'https://ui-avatars.com/api/?name=Rishabh+Raj', 'skills': ['Founder', 'Designer'] },
-    { 'id': 'u7', 'name': 'Md Asif', 'username': 'md@betterinside', 'password': 'MdAsf&66', 'role': 'employee', 'avatar': 'https://ui-avatars.com/api/?name=Md+Asif', 'skills': ['Backend Developer'] }
+    { 'id': 'u1', 'name': 'Admin', 'username': 'betterinside@admin', 'password': 'YHthjo89', 'role': 'admin', 'avatar': '/static/Logos/Logo Icon SVG.svg', 'skills': ['System Admin'] },
+    { 'id': 'u2', 'name': 'Ayush Sahay', 'username': 'ayush@betterinside', 'password': 'Ghyvr45', 'role': 'employee', 'avatar': '/static/Logos/Logo Icon SVG.svg', 'skills': ['Marketing', 'Research'] },
+    { 'id': 'u3', 'name': 'Krishna Kumar', 'username': 'krishna@betterinside', 'password': 'gGIGng34', 'role': 'employee', 'avatar': '/static/Logos/Logo Icon SVG.svg', 'skills': ['Backend Developer'] },
+    { 'id': 'u4', 'name': 'Ajay Kumar', 'username': 'ajay@betterinside', 'password': 'AjKmr#99', 'role': 'employee', 'avatar': '/static/Logos/Logo Icon SVG.svg', 'skills': ['Backend Developer'] },
+    { 'id': 'u5', 'name': 'Apurva Garg', 'username': 'apurva@betterinside', 'password': 'ApGrg$88', 'role': 'admin', 'avatar': '/static/Logos/Logo Icon SVG.svg', 'skills': ['Founder', 'Management'] },
+    { 'id': 'u6', 'name': 'Rishabh Raj', 'username': 'rishabh@betterinside', 'password': 'RsRj%77', 'role': 'admin', 'avatar': '/static/Logos/Logo Icon SVG.svg', 'skills': ['Founder', 'Designer'] },
+    { 'id': 'u7', 'name': 'Md Asif', 'username': 'md@betterinside', 'password': 'MdAsf&66', 'role': 'employee', 'avatar': '/static/Logos/Logo Icon SVG.svg', 'skills': ['Backend Developer'] }
 ]
 
 for u in users_data:

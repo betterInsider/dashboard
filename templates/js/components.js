@@ -1,4 +1,4 @@
-import { DB, AppState } from './data.js';
+import { DB, AppState, DEFAULT_USER_AVATAR, resolveUserAvatar } from './data.js';
 
 function escapeHtml(value = '') {
     return String(value)
@@ -20,8 +20,9 @@ function getInitials(name = '') {
 }
 
 function renderAvatar(avatarUrl, name, className = '') {
-    if (avatarUrl) {
-        return `<div class="chatbot-avatar ${className}"><img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(name || 'Avatar')}"></div>`;
+    const resolvedAvatarUrl = resolveUserAvatar(avatarUrl);
+    if (resolvedAvatarUrl) {
+        return `<div class="chatbot-avatar ${className}"><img src="${escapeHtml(resolvedAvatarUrl)}" alt="${escapeHtml(name || 'Avatar')}"></div>`;
     }
     return `<div class="chatbot-avatar ${className}">${escapeHtml(getInitials(name || 'BI'))}</div>`;
 }
@@ -992,7 +993,7 @@ export const Components = {
 
         const mapTaskCards = (taskList) => {
             return taskList.map(t => {
-                const assignedUser = DB.users.find(u => u.id === t.assignedTo) || { avatar: '' };
+                const assignedUser = DB.users.find(u => u.id === t.assignedTo) || { avatar: DEFAULT_USER_AVATAR };
                 const isAssignee = AppState.currentUser.id === t.assignedTo;
                 const isPending = t.accepted === false && isAssignee;
                 
@@ -1021,8 +1022,11 @@ export const Components = {
                     </div>
                     <h4>${t.title}</h4>
                     <p style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${t.description}</p>
+                    <p style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">
+                        <i class='bx bx-calendar-event'></i> Due: ${t.dueDate || 'TBD'}
+                    </p>
                     <div class="task-card-footer">
-                        <img src="${assignedUser.avatar}" alt="User" style="width: 24px; height: 24px; border-radius: 50%;">
+                        <img src="${resolveUserAvatar(assignedUser.avatar)}" alt="User" style="width: 24px; height: 24px; border-radius: 50%;">
                         <span style="font-size: 12px; color: var(--text-secondary)"><i class='bx bx-message-square-dots'></i> ${t.comments ? t.comments.length : 0}</span>
                     </div>
                     ${actionBtn}
@@ -1113,7 +1117,7 @@ export const Components = {
             <div>
                 <div class="table-container" style="max-width: 600px;">
                     <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 30px;">
-                        <img src="${user.avatar}" alt="" style="width: 80px; height: 80px; border-radius: 12px;">
+                        <img src="${resolveUserAvatar(user.avatar)}" alt="" style="width: 80px; height: 80px; border-radius: 12px;">
                         <div>
                             <h2 style="font-size: 24px; margin-bottom: 5px;">${user.name}</h2>
                             <span style="color: var(--text-secondary); text-transform: uppercase; font-size: 12px; font-weight: 700; letter-spacing: 1px;">${user.role}</span>
@@ -1999,6 +2003,12 @@ export const Components = {
                             </select>
                         </div>
                     </div>
+                    <div class="input-group">
+                        <label>Due Date</label>
+                        <div class="input-wrapper">
+                            <input type="date" id="ft-due-date">
+                        </div>
+                    </div>
 
                     <!-- Milestone Section -->
                     <div style="margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
@@ -2092,7 +2102,7 @@ export const Components = {
                 <div class="section-header" style="align-items: flex-start; flex-wrap: wrap;">
                     <div>
                         <h2><i class='bx bx-task'></i> ${task.title}</h2>
-                        <p style="color: var(--text-secondary); margin-top: 5px;">Project: <strong>${project.name}</strong> &middot; Status: <strong>${task.status.toUpperCase()}</strong></p>
+                        <p style="color: var(--text-secondary); margin-top: 5px;">Project: <strong>${project.name}</strong> &middot; Status: <strong>${task.status.toUpperCase()}</strong> &middot; Due: <strong>${task.dueDate || 'TBD'}</strong></p>
                     </div>
                     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                         <button class="btn btn-secondary btn-sm" id="btn-back-to-tasks"><i class='bx bx-arrow-back'></i> Back</button>
@@ -2278,7 +2288,7 @@ export const Components = {
                 </div>
                 <div style="text-align: center; margin-bottom: 30px;">
                     <div style="position: relative; display: inline-block;">
-                        <img id="profile-preview-large" src="${user.avatar}" style="width: 120px; height: 120px; border-radius: 50%; border: 4px solid var(--primary); object-fit: cover;">
+                        <img id="profile-preview-large" src="${resolveUserAvatar(user.avatar)}" style="width: 120px; height: 120px; border-radius: 50%; border: 4px solid var(--primary); object-fit: cover;">
                         <label for="profile-upload" style="position: absolute; bottom: 5px; right: 5px; background: var(--primary); color: #fff; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">
                             <i class='bx bx-camera' style="font-size: 18px;"></i>
                         </label>

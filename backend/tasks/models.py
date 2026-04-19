@@ -5,6 +5,7 @@ class Task(models.Model):
     project_id = models.CharField(max_length=50, blank=True, null=True)
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
+    due_date = models.CharField(max_length=50, blank=True, null=True)
     assigned_to = models.CharField(max_length=50) # string user id
     status = models.CharField(max_length=50, default='todo')
     accepted = models.BooleanField(default=False)
