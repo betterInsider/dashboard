@@ -15,7 +15,7 @@ from projects.models import Project
 from tasks.models import Milestone, Task, Ticket
 
 
-DEFAULT_AVATAR = "/static/Logos/Logo Icon SVG.svg"
+DEFAULT_AVATAR = "/static/Logos/Logo DP.png"
 BETTER_INSIDE_BRIEF = (
     "Better Inside is a creative and digital execution studio that combines "
     "brand systems, website delivery, dashboard design, content operations, "

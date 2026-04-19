@@ -1,0 +1,249 @@
+:root {
+    --bi-admin-bg: #0d0d12;
+    --bi-admin-panel: #17171f;
+    --bi-admin-panel-2: #1e1f29;
+    --bi-admin-border: rgba(255, 255, 255, 0.08);
+    --bi-admin-text: #f5f7fb;
+    --bi-admin-muted: #aab1c4;
+    --bi-admin-accent: #7b4dff;
+    --bi-admin-accent-2: #f041b3;
+    --bi-admin-success: #19c37d;
+    --bi-admin-shadow: 0 20px 45px rgba(3, 4, 10, 0.35);
+}
+
+body.app-accounts.model-customuser,
+body.betterinside-admin-user-add {
+    background:
+        radial-gradient(circle at top left, rgba(123, 77, 255, 0.18), transparent 30%),
+        radial-gradient(circle at top right, rgba(240, 65, 179, 0.12), transparent 24%),
+        var(--bi-admin-bg);
+    color: var(--bi-admin-text);
+}
+
+body.app-accounts.model-customuser #container,
+body.betterinside-admin-user-add #container {
+    background: transparent;
+}
+
+body.app-accounts.model-customuser #header,
+body.betterinside-admin-user-add #header {
+    background: rgba(15, 16, 24, 0.92);
+    border-bottom: 1px solid var(--bi-admin-border);
+    color: var(--bi-admin-text);
+}
+
+body.app-accounts.model-customuser #branding h1,
+body.app-accounts.model-customuser #branding h1 a:link,
+body.app-accounts.model-customuser #branding h1 a:visited,
+body.betterinside-admin-user-add #branding h1,
+body.betterinside-admin-user-add #branding h1 a:link,
+body.betterinside-admin-user-add #branding h1 a:visited {
+    color: var(--bi-admin-text);
+}
+
+body.app-accounts.model-customuser div.breadcrumbs,
+body.betterinside-admin-user-add div.breadcrumbs {
+    background: transparent;
+    border-bottom: 0;
+    color: var(--bi-admin-muted);
+    padding: 16px 40px 0;
+}
+
+body.app-accounts.model-customuser #content,
+body.betterinside-admin-user-add #content {
+    padding: 24px 40px 40px;
+}
+
+body.app-accounts.model-customuser .module,
+body.app-accounts.model-customuser .inline-group,
+body.betterinside-admin-user-add .module,
+body.betterinside-admin-user-add .inline-group {
+    background: linear-gradient(180deg, rgba(30, 31, 41, 0.96), rgba(21, 22, 31, 0.96));
+    border: 1px solid var(--bi-admin-border);
+    border-radius: 22px;
+    box-shadow: var(--bi-admin-shadow);
+    overflow: hidden;
+}
+
+body.app-accounts.model-customuser .module h2,
+body.app-accounts.model-customuser .module caption,
+body.betterinside-admin-user-add .module h2,
+body.betterinside-admin-user-add .module caption {
+    background: linear-gradient(90deg, rgba(123, 77, 255, 0.18), rgba(240, 65, 179, 0.08));
+    color: var(--bi-admin-text);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    padding: 18px 22px;
+}
+
+body.app-accounts.model-customuser .aligned .form-row,
+body.betterinside-admin-user-add .aligned .form-row {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 18px 22px;
+}
+
+body.app-accounts.model-customuser .aligned label,
+body.betterinside-admin-user-add .aligned label {
+    color: var(--bi-admin-text);
+    font-weight: 600;
+}
+
+body.app-accounts.model-customuser .help,
+body.app-accounts.model-customuser .helptext,
+body.betterinside-admin-user-add .help,
+body.betterinside-admin-user-add .helptext {
+    color: var(--bi-admin-muted);
+    font-size: 12px;
+}
+
+body.app-accounts.model-customuser input[type="text"],
+body.app-accounts.model-customuser input[type="email"],
+body.app-accounts.model-customuser input[type="password"],
+body.app-accounts.model-customuser input[type="url"],
+body.app-accounts.model-customuser textarea,
+body.app-accounts.model-customuser select,
+body.betterinside-admin-user-add input[type="text"],
+body.betterinside-admin-user-add input[type="email"],
+body.betterinside-admin-user-add input[type="password"],
+body.betterinside-admin-user-add input[type="url"],
+body.betterinside-admin-user-add textarea,
+body.betterinside-admin-user-add select {
+    background: rgba(10, 11, 17, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    color: var(--bi-admin-text);
+    min-height: 46px;
+    padding: 10px 14px;
+}
+
+body.app-accounts.model-customuser input:focus,
+body.app-accounts.model-customuser select:focus,
+body.app-accounts.model-customuser textarea:focus,
+body.betterinside-admin-user-add input:focus,
+body.betterinside-admin-user-add select:focus,
+body.betterinside-admin-user-add textarea:focus {
+    border-color: rgba(123, 77, 255, 0.85);
+    box-shadow: 0 0 0 3px rgba(123, 77, 255, 0.18);
+    outline: 0;
+}
+
+body.app-accounts.model-customuser .submit-row,
+body.betterinside-admin-user-add .submit-row {
+    background: rgba(20, 21, 29, 0.92);
+    border: 1px solid var(--bi-admin-border);
+    border-radius: 18px;
+    box-shadow: var(--bi-admin-shadow);
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+    margin-top: 22px;
+    padding: 16px 18px;
+}
+
+body.app-accounts.model-customuser .submit-row input,
+body.app-accounts.model-customuser .submit-row a.deletelink,
+body.betterinside-admin-user-add .submit-row input,
+body.betterinside-admin-user-add .submit-row a.deletelink {
+    border-radius: 999px;
+    font-weight: 700;
+    min-height: 42px;
+    padding: 0 18px;
+}
+
+body.app-accounts.model-customuser .submit-row input.default,
+body.betterinside-admin-user-add .submit-row input.default {
+    background: linear-gradient(90deg, var(--bi-admin-accent), var(--bi-admin-accent-2));
+    border: 0;
+    color: #fff;
+}
+
+body.app-accounts.model-customuser .submit-row input:not(.default),
+body.betterinside-admin-user-add .submit-row input:not(.default) {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--bi-admin-text);
+}
+
+.bi-admin-hero {
+    align-items: end;
+    background: linear-gradient(135deg, rgba(123, 77, 255, 0.22), rgba(240, 65, 179, 0.1));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 28px;
+    box-shadow: var(--bi-admin-shadow);
+    display: grid;
+    gap: 20px;
+    grid-template-columns: 1.5fr 1fr;
+    margin-bottom: 24px;
+    padding: 28px;
+}
+
+.bi-admin-kicker {
+    color: #d9ceff;
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+}
+
+.bi-admin-hero h1 {
+    color: var(--bi-admin-text);
+    font-size: 34px;
+    line-height: 1.1;
+    margin: 0 0 10px;
+}
+
+.bi-admin-hero p,
+.bi-admin-stat span {
+    color: var(--bi-admin-muted);
+    margin: 0;
+}
+
+.bi-admin-hero-meta {
+    display: grid;
+    gap: 14px;
+}
+
+.bi-admin-stat,
+.bi-admin-help-card {
+    background: rgba(8, 9, 14, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 18px;
+    padding: 16px;
+}
+
+.bi-admin-stat strong,
+.bi-admin-help-card h3 {
+    color: var(--bi-admin-text);
+    display: block;
+    margin-bottom: 6px;
+}
+
+.bi-admin-help-grid {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 20px;
+}
+
+.bi-admin-help-card p {
+    color: var(--bi-admin-muted);
+    margin: 0;
+}
+
+@media (max-width: 980px) {
+    .bi-admin-hero,
+    .bi-admin-help-grid {
+        grid-template-columns: 1fr;
+    }
+
+    body.app-accounts.model-customuser #content,
+    body.betterinside-admin-user-add #content,
+    body.app-accounts.model-customuser div.breadcrumbs,
+    body.betterinside-admin-user-add div.breadcrumbs {
+        padding-left: 20px;
+        padding-right: 20px;
+    }
+}

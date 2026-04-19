@@ -1,4 +1,4 @@
-export const DEFAULT_USER_AVATAR = '/static/Logos/Logo Icon SVG.svg';
+export const DEFAULT_USER_AVATAR = '/static/Logos/Logo DP.png';
 
 export function resolveUserAvatar(avatar = '') {
     const normalizedAvatar = String(avatar || '').trim();

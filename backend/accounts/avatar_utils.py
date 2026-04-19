@@ -1,4 +1,4 @@
-DEFAULT_USER_AVATAR = '/static/Logos/Logo Icon SVG.svg'
+DEFAULT_USER_AVATAR = '/static/Logos/Logo DP.png'
 LEGACY_AVATAR_HOST = 'ui-avatars.com'
 
 

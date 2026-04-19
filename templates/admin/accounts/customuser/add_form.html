@@ -1,0 +1,49 @@
+{% extends "admin/change_form.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'admin/css/custom_user_admin.css' %}">
+{% endblock %}
+
+{% block bodyclass %}{{ block.super }} betterinside-admin-user-add{% endblock %}
+
+{% block content_title %}
+<section class="bi-admin-hero">
+    <div class="bi-admin-hero-copy">
+        <span class="bi-admin-kicker">Better Inside Admin</span>
+        <h1>Add Dashboard User</h1>
+        <p>Create a teammate account with a simpler flow that matches the dashboard style.</p>
+    </div>
+    <div class="bi-admin-hero-meta">
+        <div class="bi-admin-stat">
+            <strong>Fast setup</strong>
+            <span>Identity, login, and access in one form.</span>
+        </div>
+        <div class="bi-admin-stat">
+            <strong>Default logo ready</strong>
+            <span>No need to upload an avatar during onboarding.</span>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block object-tools %}{% endblock %}
+
+{% block after_field_sets %}
+{{ block.super }}
+<section class="bi-admin-help-grid">
+    <article class="bi-admin-help-card">
+        <h3>Recommended flow</h3>
+        <p>Fill name, username, and role first. Add skills only if needed right now.</p>
+    </article>
+    <article class="bi-admin-help-card">
+        <h3>Access tips</h3>
+        <p>Use <strong>staff</strong> for admin-panel access. Use <strong>superuser</strong> only for full-control accounts.</p>
+    </article>
+    <article class="bi-admin-help-card">
+        <h3>Avatar handling</h3>
+        <p>New users automatically use the Better Inside default logo until they update their avatar themselves.</p>
+    </article>
+</section>
+{% endblock %}
