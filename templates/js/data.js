@@ -204,7 +204,6 @@ export const AppState = {
             const result = await resp.json();
             if (result.success) {
                 this.currentUser = normalizeUser(result.user);
-                localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
                 return true;
             }
         } catch (e) {
@@ -220,7 +219,6 @@ export const AppState = {
             console.error(e);
         }
         this.currentUser = null;
-        localStorage.removeItem('currentUser');
     },
 
     async init() {
@@ -242,7 +240,7 @@ export const AppState = {
         }
 
         try {
-            const resp = await fetch('/api/db?_t=' + Date.now(), { cache: 'no-store' });
+            const resp = await fetch('/api/db');
             if (resp.ok) {
                 const parsedDB = await resp.json();
                 if (Object.keys(parsedDB).length > 0) {
@@ -252,13 +250,6 @@ export const AppState = {
             }
         } catch (e) {
             console.error("Failed to load remote DB", e);
-            // Fallback to local
-            const savedDB = localStorage.getItem('betterInside_DB');
-            if (savedDB) {
-                const parsedDB = JSON.parse(savedDB);
-                Object.assign(DB, parsedDB);
-                this.normalizeDB();
-            }
         }
     },
 
@@ -271,7 +262,6 @@ export const AppState = {
         if (user) {
             user.avatar = resolveUserAvatar(dataUrl);
             this.currentUser.avatar = resolveUserAvatar(dataUrl);
-            localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
 
             const saveResult = await this.saveDB({
                 users: [{
@@ -342,7 +332,6 @@ export const AppState = {
             return { success: false, message: 'Network sync failed.' };
         });
 
-        localStorage.setItem('betterInside_DB', JSON.stringify(DB));
         return request;
     },
 
@@ -946,7 +935,6 @@ export const AppState = {
                 user.skills = Array.isArray(update.skills) ? update.skills : [];
                 if (this.currentUser && String(this.currentUser.id) === String(user.id)) {
                     this.currentUser.skills = user.skills;
-                    localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
                 }
             }
         });

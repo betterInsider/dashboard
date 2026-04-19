@@ -33,8 +33,6 @@ const notifBtn = document.getElementById('notif-btn');
 const notifDropdown = document.querySelector('.notification-dropdown');
 const profileBtn = document.getElementById('profile-btn');
 const profileMenu = document.querySelector('.profile-menu');
-const globalSearchInput = document.getElementById('global-search-input');
-const globalSearchResults = document.getElementById('global-search-results');
 const confirmModalOverlay = document.getElementById('confirm-modal-overlay');
 const confirmModalTitle = document.getElementById('confirm-modal-title');
 const confirmModalMessage = document.getElementById('confirm-modal-message');
@@ -102,10 +100,6 @@ async function parseJsonOrError(response) {
             ? `Request failed with status ${response.status}.`
             : (text || `Request failed with status ${response.status}.`)
     };
-}
-
-function getChatStorageKey() {
-    return `betterInside_chat_widget_${AppState.currentUser?.id || 'guest'}`;
 }
 
 function formatChatTime(date = new Date()) {
@@ -350,9 +344,7 @@ async function loadGlobalChatMessages({ afterId = null } = {}) {
             params.set('limit', '50');
         }
 
-        const response = await fetch(`/api/chat/messages?${params.toString()}`, {
-            cache: 'no-store'
-        });
+        const response = await fetch(`/api/chat/messages?${params.toString()}`);
         if (!response.ok) return;
 
         const payload = await response.json();
@@ -429,43 +421,11 @@ function getDefaultChatWidgetState() {
 }
 
 function loadChatWidgetState() {
-    const baseState = getDefaultChatWidgetState();
-
-    try {
-        const savedState = JSON.parse(localStorage.getItem(getChatStorageKey()) || '{}');
-        const savedUnreadCount = Number(savedState.unreadGlobalCount);
-        return {
-            ...baseState,
-            isOpen: Boolean(savedState.isOpen),
-            activeTab: savedState.activeTab === 'global' ? 'global' : 'assistant',
-            assistantTyping: false,
-            assistantMessages: Array.isArray(savedState.assistantMessages) && savedState.assistantMessages.length
-                ? savedState.assistantMessages
-                : baseState.assistantMessages,
-            unreadGlobalCount: Number.isFinite(savedUnreadCount) ? savedUnreadCount : baseState.unreadGlobalCount,
-            lastSeenGlobalMessageId: Number.isFinite(Number(savedState.lastSeenGlobalMessageId))
-                ? Number(savedState.lastSeenGlobalMessageId)
-                : baseState.lastSeenGlobalMessageId,
-            drafts: {
-                assistant: '',
-                global: ''
-            }
-        };
-    } catch (error) {
-        return baseState;
-    }
+    return getDefaultChatWidgetState();
 }
 
 function persistChatWidgetState() {
-    if (!AppState.currentUser || !chatWidgetState) return;
-
-    localStorage.setItem(getChatStorageKey(), JSON.stringify({
-        isOpen: chatWidgetState.isOpen,
-        activeTab: chatWidgetState.activeTab,
-        assistantMessages: chatWidgetState.assistantMessages,
-        unreadGlobalCount: chatWidgetState.unreadGlobalCount,
-        lastSeenGlobalMessageId: chatWidgetState.lastSeenGlobalMessageId
-    }));
+    return;
 }
 
 function syncChatWidgetScroll() {
@@ -1047,15 +1007,6 @@ function bindChatWidgetEvents() {
 async function init() {
     await AppState.init();
 
-    // Theme setup
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'light') {
-        document.documentElement.classList.remove('dark-theme');
-        document.documentElement.classList.add('light-theme');
-    } else if (savedTheme === 'dark') {
-        document.documentElement.classList.remove('light-theme');
-        document.documentElement.classList.add('dark-theme');
-    }
     const isDark = document.documentElement.classList.contains('dark-theme');
     updateThemeIcon(isDark);
 
@@ -1152,12 +1103,6 @@ function buildNavigation(role) {
 
 let currentRouteId = 'dashboard';
 
-function clearGlobalSearchResults() {
-    if (!globalSearchResults) return;
-    globalSearchResults.classList.remove('active');
-    globalSearchResults.innerHTML = '';
-}
-
 function closeConfirmModal() {
     if (!confirmModalOverlay) return;
     confirmModalOverlay.classList.remove('show');
@@ -1217,77 +1162,8 @@ function syncTaskChatView(taskId) {
     }
 }
 
-function handleSearchSelection(result) {
-    clearGlobalSearchResults();
-    if (globalSearchInput) globalSearchInput.value = '';
-
-    if (result.type === 'client') {
-        AppState.activeViewClientId = result.id;
-        navigateTo('view-client', () => Components.renderClientDetailsPage(result.id), 'Client Details');
-        return;
-    }
-
-    if (result.type === 'project') {
-        AppState.activeViewProjectId = result.id;
-        navigateTo('view-project', () => Components.renderProjectDetailsPage(result.id), 'Project Details');
-        return;
-    }
-
-    if (result.type === 'task') {
-        AppState.activeViewTaskId = result.id;
-        navigateTo('view-task', () => Components.renderTaskDetailsPage(result.id), 'Task Details');
-        bindTaskViewEvents();
-        return;
-    }
-
-    if (result.type === 'ticket') {
-        navigateTo('helpdesk', routes[AppState.currentUser.role].find((route) => route.id === 'helpdesk').renderer, 'Helpdesk');
-        return;
-    }
-
-    if (result.type === 'contract') {
-        navigateTo('clients', routes[AppState.currentUser.role].find((route) => route.id === 'clients').renderer, 'Clients');
-    }
-}
-
-function renderGlobalSearchResults() {
-    if (!globalSearchInput || !globalSearchResults || !AppState.currentUser) return;
-
-    const query = globalSearchInput.value.trim();
-    if (!query) {
-        clearGlobalSearchResults();
-        return;
-    }
-
-    const results = AppState.searchWorkspace(query);
-    if (!results.length) {
-        globalSearchResults.classList.add('active');
-        globalSearchResults.innerHTML = `<div class="search-result-item" style="cursor:default;"><div><strong>No results</strong><small>Try a client, project, task, or helpdesk keyword.</small></div></div>`;
-        return;
-    }
-
-    globalSearchResults.classList.add('active');
-    globalSearchResults.innerHTML = results.map((result, index) => `
-        <button type="button" class="search-result-item" data-index="${index}">
-            <div>
-                <strong>${result.title}</strong>
-                <small>${result.subtitle}</small>
-            </div>
-            <span class="search-result-type">${result.type}</span>
-        </button>
-    `).join('');
-
-    globalSearchResults.querySelectorAll('.search-result-item').forEach((button) => {
-        button.addEventListener('click', () => {
-            const selected = results[Number(button.dataset.index)];
-            if (selected) handleSearchSelection(selected);
-        });
-    });
-}
-
 function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
     if (!contentArea) return;
-    clearGlobalSearchResults();
     currentRouteId = routeId;
     pageTitle.textContent = routeName;
     contentArea.innerHTML = renderFn();
@@ -2640,11 +2516,9 @@ function setupEventListeners() {
             if (isCurrentlyDark) {
                 document.documentElement.classList.remove('dark-theme');
                 document.documentElement.classList.add('light-theme');
-                localStorage.setItem('theme', 'light');
             } else {
                 document.documentElement.classList.remove('light-theme');
                 document.documentElement.classList.add('dark-theme');
-                localStorage.setItem('theme', 'dark');
             }
 
             const isDarkNow = document.documentElement.classList.contains('dark-theme');
@@ -2730,17 +2604,7 @@ function setupEventListeners() {
         });
     }
 
-    globalSearchInput?.addEventListener('input', renderGlobalSearchResults);
-    globalSearchInput?.addEventListener('focus', renderGlobalSearchResults);
-
     document.addEventListener('click', (event) => {
-        if (globalSearchResults && globalSearchInput) {
-            const clickedInsideSearch = event.target.closest('.search-bar');
-            if (!clickedInsideSearch) {
-                clearGlobalSearchResults();
-            }
-        }
-
         if (confirmModalOverlay && event.target === confirmModalOverlay) {
             closeConfirmModal();
         }
@@ -2792,7 +2656,7 @@ setInterval(async () => {
     const noPollingRoutes = ['credentials', 'expenses', 'add-project', 'add-task', 'add-client', 'add-contract', 'add-ticket', 'create-doc', 'profile'];
     if (noPollingRoutes.includes(currentRouteId)) return;
     try {
-        const resp = await fetch('/api/db?_t=' + Date.now(), { cache: 'no-store' });
+        const resp = await fetch('/api/db');
         if (!resp.ok) return;
         const parsedDB = await resp.json();
 

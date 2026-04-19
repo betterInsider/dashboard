@@ -5,19 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Better Inside Dashboard{% endblock %}</title>
     <script>
-        (function () {
-            try {
-                var savedTheme = localStorage.getItem('theme');
-                var root = document.documentElement;
-                if (savedTheme === 'dark') {
-                    root.classList.add('dark-theme');
-                } else {
-                    root.classList.add('light-theme');
-                }
-            } catch (e) {
-                document.documentElement.classList.add('light-theme');
-            }
-        })();
+        document.documentElement.classList.add('light-theme');
     </script>
     
     <!-- Google Fonts -->
@@ -35,6 +23,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     
     <!-- CSS -->
+    <link rel="icon" type="image/svg+xml" href="/static/Logos/Logo Icon SVG.svg">
     <link rel="stylesheet" href="/static/css/main.css">
     
     <script>
