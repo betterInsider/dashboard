@@ -289,6 +289,10 @@ export const AppState = {
     },
 
     buildSyncPayload(overrides = {}) {
+        if (overrides && Object.keys(overrides).length) {
+            return overrides;
+        }
+
         const payload = {
             clients: DB.clients,
             projects: DB.projects,
@@ -324,6 +328,9 @@ export const AppState = {
             if (!res.ok) {
                 const text = await res.text();
                 console.error('saveDB failed:', res.status, text);
+                if (res.status === 413) {
+                    return { success: false, message: 'Upload is too large for the server. Use a smaller avatar or increase the server body-size limit.' };
+                }
                 return { success: false, message: `Sync failed with status ${res.status}.` };
             }
             return { success: true };

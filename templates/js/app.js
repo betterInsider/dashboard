@@ -61,6 +61,8 @@ const GLOBAL_CHAT_POLL_INTERVAL_MS = 2500;
 const JAAS_APP_ID = String(window.BETTER_INSIDE_CONFIG?.jaasAppId || 'vpaas-magic-cookie-148ee617d13a4f6b96bd2e6ce8c7e647').trim();
 const JITSI_DOMAIN = '8x8.vc';
 const JITSI_SCRIPT_SRC = `https://${JITSI_DOMAIN}/${JAAS_APP_ID}/external_api.js`;
+const MAX_AVATAR_DIMENSION = 512;
+const MAX_AVATAR_DATA_URL_LENGTH = 900000;
 
 function getCookie(name) {
     const cookieValue = `; ${document.cookie}`;
@@ -100,6 +102,66 @@ async function parseJsonOrError(response) {
             ? `Request failed with status ${response.status}.`
             : (text || `Request failed with status ${response.status}.`)
     };
+}
+
+function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => resolve(event.target?.result || '');
+        reader.onerror = () => reject(new Error('Could not read the selected image.'));
+        reader.readAsDataURL(file);
+    });
+}
+
+function loadImageElement(src) {
+    return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('Could not process the selected image.'));
+        image.src = src;
+    });
+}
+
+async function optimizeAvatarImage(file) {
+    const sourceDataUrl = await readFileAsDataUrl(file);
+    if (!sourceDataUrl) {
+        throw new Error('Could not read the selected image.');
+    }
+
+    if (file.type === 'image/svg+xml') {
+        if (sourceDataUrl.length > MAX_AVATAR_DATA_URL_LENGTH) {
+            throw new Error('Please upload a smaller avatar image.');
+        }
+        return sourceDataUrl;
+    }
+
+    const image = await loadImageElement(sourceDataUrl);
+    const naturalWidth = image.naturalWidth || image.width || 1;
+    const naturalHeight = image.naturalHeight || image.height || 1;
+    const longestSide = Math.max(naturalWidth, naturalHeight);
+    const scale = longestSide > MAX_AVATAR_DIMENSION ? MAX_AVATAR_DIMENSION / longestSide : 1;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(naturalHeight * scale));
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+        throw new Error('Could not process the selected image.');
+    }
+
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    for (const quality of [0.82, 0.72, 0.62, 0.52]) {
+        const candidate = canvas.toDataURL('image/jpeg', quality);
+        if (candidate.length <= MAX_AVATAR_DATA_URL_LENGTH) {
+            return candidate;
+        }
+    }
+
+    throw new Error('Avatar image is too large. Use a smaller photo.');
 }
 
 function formatChatTime(date = new Date()) {
@@ -1751,22 +1813,15 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
                     uploadEl.value = '';
                     return;
                 }
-                const reader = new FileReader();
-                reader.onload = (ev) => {
-                    pendingAvatarData = ev.target.result;
-                    previewEl.src = ev.target.result;
-                };
-                reader.readAsDataURL(file);
+                void optimizeAvatarImage(file).then((optimizedDataUrl) => {
+                    pendingAvatarData = optimizedDataUrl;
+                    previewEl.src = optimizedDataUrl;
+                }).catch((error) => {
+                    pendingAvatarData = null;
+                    uploadEl.value = '';
+                    alert(error.message || 'Could not prepare this avatar image.');
+                });
             }
-        });
-
-        formEl?.addEventListener('submit', (e) => {
-            e.preventDefault();
-            if (pendingAvatarData) {
-                AppState.updateCurrentUserAvatar(pendingAvatarData);
-                alert('Profile picture updated successfully! ✨');
-            }
-            navigateTo('dashboard', routes[AppState.currentUser.role].find(r => r.id === 'dashboard').renderer, 'Dashboard Overview');
         });
 
         formEl?.addEventListener('submit', async (e) => {
@@ -1785,12 +1840,7 @@ function navigateTo(routeId, renderFn, routeName = 'Dashboard') {
                 let avatarData = pendingAvatarData;
 
                 if (!avatarData && selectedFile) {
-                    avatarData = await new Promise((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.onload = (event) => resolve(event.target?.result || '');
-                        reader.onerror = () => reject(new Error('Could not read the selected image.'));
-                        reader.readAsDataURL(selectedFile);
-                    });
+                    avatarData = await optimizeAvatarImage(selectedFile);
                 }
 
                 const result = await AppState.updateCurrentUserAvatar(avatarData);
