@@ -32,7 +32,7 @@ COMPANY_INFO = {
     'name': 'Better Inside',
     'tagline': 'Creative design, digital execution, and internal delivery in one operating system.',
     'description': 'Better Inside is a creative and digital services company focused on brand systems, websites, design operations, and delivery management for growing clients. The internal dashboard extends the same first-draft website direction into an operating layer for clients, projects, tasks, credentials, contracts, and team communication.',
-    'founded': '2020',
+    'founded': '2025',
     'location': 'India',
     'websiteDraftReference': 'Better Inside Homepage Design.pdf',
     'coreServices': [
