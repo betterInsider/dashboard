@@ -1208,6 +1208,104 @@ table tbody tr:last-child td {
 .project-summary-grid {
     margin-bottom: 24px;
 }
+.project-portfolio-container {
+    overflow-x: hidden;
+}
+.project-portfolio-table {
+    width: 100%;
+    table-layout: auto;
+}
+.project-portfolio-table th {
+    white-space: nowrap;
+}
+.project-portfolio-table th,
+.project-portfolio-table td {
+    padding-top: 18px;
+    padding-bottom: 18px;
+}
+.project-portfolio-table th:nth-child(1),
+.project-portfolio-table td:nth-child(1) {
+    width: 42%;
+}
+.project-portfolio-table th:nth-child(2),
+.project-portfolio-table td:nth-child(2) {
+    width: 13%;
+}
+.project-portfolio-table th:nth-child(3),
+.project-portfolio-table td:nth-child(3) {
+    width: 16%;
+}
+.project-portfolio-table th:nth-child(4),
+.project-portfolio-table td:nth-child(4) {
+    width: 11%;
+}
+.project-portfolio-table th:nth-child(5),
+.project-portfolio-table td:nth-child(5) {
+    width: 10%;
+}
+.project-portfolio-table th:nth-child(6),
+.project-portfolio-table td:nth-child(6) {
+    width: 8%;
+}
+.project-portfolio-main {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+.project-portfolio-title {
+    display: block;
+    font-size: 15px;
+    line-height: 1.45;
+    margin-bottom: 4px;
+    word-break: break-word;
+}
+.project-portfolio-client {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 12px;
+    margin-bottom: 8px;
+}
+.project-portfolio-main .project-description-snippet {
+    margin-top: 4px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    word-break: break-word;
+    max-width: none;
+}
+.project-portfolio-main-cell {
+    vertical-align: top !important;
+}
+.project-portfolio-status-cell,
+.project-portfolio-progress-cell,
+.project-portfolio-date-cell,
+.project-portfolio-health-cell,
+.project-portfolio-actions-cell {
+    vertical-align: middle;
+    white-space: nowrap;
+}
+.project-portfolio-progress-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 110px;
+}
+.project-portfolio-progress-cell .mini-progress {
+    width: 100%;
+    max-width: 140px;
+    margin-bottom: 0;
+}
+.project-portfolio-date {
+    font-weight: 500;
+    white-space: nowrap;
+}
+.project-portfolio-actions-cell .action-cell {
+    justify-content: flex-start;
+    gap: 8px;
+    flex-wrap: nowrap;
+}
 .credential-summary-grid {
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }

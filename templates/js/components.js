@@ -534,21 +534,25 @@ export const Components = {
             const healthLabel = progress >= 75 ? 'On Track' : progress >= 40 ? 'Watching' : 'At Risk';
             return `
             <tr>
-                <td>
-                    <strong>${p.name}</strong><br>
-                    <small style="color:var(--text-secondary)">${p.client || 'Internal Delivery'}</small>
+                <td class="project-portfolio-main-cell">
+                    <div class="project-portfolio-main">
+                    <strong class="project-portfolio-title">${p.name}</strong>
+                    <small class="project-portfolio-client">${p.client || 'Internal Delivery'}</small>
                     <div class="project-description-snippet">${p.description || 'No description added yet.'}</div>
-                </td>
-                <td><span class="status ${statusText.toLowerCase().replace(' ', '-')}">${statusText}</span></td>
-                <td>
-                    <div class="mini-progress">
-                        <div class="mini-progress-bar" style="width:${progress}%"></div>
                     </div>
-                    <small style="color:var(--text-secondary)">${progress}% complete</small>
                 </td>
-                <td>${p.dueDate || 'TBD'}</td>
-                <td><span class="portfolio-health ${healthLabel.toLowerCase().replace(' ', '-')}">${healthLabel}</span></td>
-                <td>
+                <td class="project-portfolio-status-cell"><span class="status ${statusText.toLowerCase().replace(' ', '-')}">${statusText}</span></td>
+                <td class="project-portfolio-progress-cell">
+                    <div class="project-portfolio-progress-wrap">
+                        <div class="mini-progress">
+                            <div class="mini-progress-bar" style="width:${progress}%"></div>
+                        </div>
+                        <small style="color:var(--text-secondary)">${progress}% complete</small>
+                    </div>
+                </td>
+                <td class="project-portfolio-date-cell"><span class="project-portfolio-date">${p.dueDate || 'TBD'}</span></td>
+                <td class="project-portfolio-health-cell"><span class="portfolio-health ${healthLabel.toLowerCase().replace(' ', '-')}">${healthLabel}</span></td>
+                <td class="project-portfolio-actions-cell">
                     <div class="action-cell">
                         <button class="icon-btn btn-view-project" data-id="${p.id}" title="Project Details"><i class='bx bx-show'></i></button>
                         ${user.role === 'admin' ? `
@@ -618,13 +622,13 @@ export const Components = {
                 </div>
             </div>
 
-            <div class="dashboard-detail-grid">
-                <div class="table-container">
+            <div style="display: flex; flex-direction: column; gap: 24px;">
+                <div class="table-container project-portfolio-container">
                     <div class="section-header">
                         <h2>Project Portfolio</h2>
                         ${headerActions}
                     </div>
-                    <table>
+                    <table class="project-portfolio-table">
                         <thead>
                             <tr>
                                 <th>Project</th>
@@ -990,6 +994,39 @@ export const Components = {
         
         const active = tasks.filter(t => t.status === 'todo' || t.status === 'in-progress');
         const done = tasks.filter(t => t.status === 'done');
+        const activeEmployeeWorkload = DB.users
+            .filter((member) => member.role === 'employee')
+            .map((member) => {
+                const memberActiveTasks = active.filter((task) => String(task.assignedTo) === String(member.id));
+                if (!memberActiveTasks.length) return null;
+
+                const avgProgress = Math.round(
+                    memberActiveTasks.reduce((sum, task) => sum + (Number(task.progress) || 0), 0) / memberActiveTasks.length
+                );
+                const inProgressCount = memberActiveTasks.filter((task) => task.status === 'in-progress').length;
+
+                return {
+                    id: member.id,
+                    name: member.name,
+                    avatar: resolveUserAvatar(member.avatar),
+                    activeTaskCount: memberActiveTasks.length,
+                    inProgressCount,
+                    avgProgress,
+                    tasks: memberActiveTasks
+                        .map((task) => ({
+                            id: task.id,
+                            title: task.title,
+                            progress: Math.max(0, Math.min(100, Number(task.progress) || 0)),
+                            status: task.status || 'todo',
+                            dueDate: task.dueDate || 'TBD',
+                        }))
+                        .sort((left, right) => right.progress - left.progress || left.title.localeCompare(right.title)),
+                };
+            })
+            .filter(Boolean)
+            .sort((left, right) => (
+                right.activeTaskCount - left.activeTaskCount || right.avgProgress - left.avgProgress || left.name.localeCompare(right.name)
+            ));
 
         const mapTaskCards = (taskList) => {
             return taskList.map(t => {
@@ -1041,6 +1078,50 @@ export const Components = {
             <div class="section-header" style="margin-bottom: 20px;">
                 <h2>Tasks Allotted</h2>
                 ${headerActions}
+            </div>
+            <div class="table-container" style="margin-bottom: 24px;">
+                <div class="section-header" style="margin-bottom: 16px;">
+                    <div>
+                        <h3>Active Employee Workload</h3>
+                        <p style="color: var(--text-secondary); font-size: 13px; margin-top: 6px;">Only employees with active assigned tasks are listed here, with task-by-task progress.</p>
+                    </div>
+                </div>
+                ${activeEmployeeWorkload.length ? `
+                    <div style="display: flex; flex-direction: column; gap: 16px;">
+                        ${activeEmployeeWorkload.map((member) => `
+                            <div style="border: 1px solid var(--border); border-radius: 14px; padding: 18px; background: var(--bg-main); min-width: 0;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; flex-wrap: wrap;">
+                                    <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+                                        <img src="${member.avatar}" alt="${member.name}" style="width: 42px; height: 42px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(var(--primary-rgb), 0.16);">
+                                        <div style="min-width: 0;">
+                                            <strong style="display:block; font-size: 15px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${member.name}</strong>
+                                            <span style="font-size: 12px; color: var(--text-secondary);">${member.activeTaskCount} active task${member.activeTaskCount === 1 ? '' : 's'} • ${member.inProgressCount} in progress</span>
+                                        </div>
+                                    </div>
+                                    <strong style="color: var(--primary); font-size: 13px;">${member.avgProgress}% overall complete</strong>
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 12px;">
+                                    ${member.tasks.map((task) => `
+                                        <div style="border: 1px solid rgba(var(--primary-rgb), 0.10); border-radius: 12px; padding: 12px 14px; background: var(--bg-card);">
+                                            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px;">
+                                                <div style="min-width: 0;">
+                                                    <strong style="display: block; color: var(--text-primary); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${task.title}</strong>
+                                                    <span style="font-size: 12px; color: var(--text-secondary); text-transform: capitalize;">${task.status.replace('-', ' ')} • Due: ${task.dueDate}</span>
+                                                </div>
+                                                <strong style="color: var(--primary); font-size: 13px; white-space: nowrap;">${task.progress}%</strong>
+                                            </div>
+                                            <div class="mini-progress" style="margin-bottom: 0;">
+                                                <div class="mini-progress-bar" style="width: ${task.progress}%;"></div>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : `
+                    <p style="color: var(--text-secondary); font-size: 14px;">No employees currently have active assigned work.</p>
+                `}
             </div>
             <div class="kanban-board" style="grid-template-columns: repeat(2, 1fr);">
                 <div class="kanban-column" id="col-active" data-status="in-progress">
