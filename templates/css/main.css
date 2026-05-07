@@ -562,10 +562,23 @@ p {
     border-top: 1px solid var(--border);
     overflow-x: hidden;
     display: flex;
+    flex-direction: column;
+    gap: 14px;
     justify-content: center;
+}
+.sidebar-meet-now-btn {
+    width: 100%;
+    justify-content: flex-start;
 }
 .sidebar.collapsed .user-profile-mini {
     justify-content: center;
+}
+.sidebar.collapsed .sidebar-meet-now-btn {
+    justify-content: center;
+    padding: 8px;
+}
+.sidebar.collapsed .sidebar-meet-now-btn .chatbot-meet-now-copy {
+    display: none;
 }
 .user-profile-mini {
     display: flex;
@@ -1577,13 +1590,61 @@ table tbody tr:last-child td {
     font-size: 10px;
 }
 .chatbot-meet-now-btn {
-    padding: 7px 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 8px 12px;
     border-radius: 999px;
-    font-size: 10px;
+    border: 1px solid rgba(92, 60, 252, 0.22);
+    background:
+        radial-gradient(circle at top left, rgba(252, 60, 156, 0.18), transparent 42%),
+        linear-gradient(135deg, rgba(92, 60, 252, 0.14), rgba(56, 189, 248, 0.08)),
+        rgba(255, 255, 255, 0.92);
+    color: var(--text-primary);
+    box-shadow: 0 10px 24px rgba(92, 60, 252, 0.16);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+.chatbot-meet-now-btn:hover:not([disabled]) {
+    transform: translateY(-1px);
+    border-color: rgba(92, 60, 252, 0.34);
+    box-shadow: 0 14px 30px rgba(92, 60, 252, 0.2);
+}
+.chatbot-meet-now-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(92, 60, 252, 0.28);
+    flex-shrink: 0;
+}
+.chatbot-meet-now-icon i {
+    font-size: 14px;
+}
+.chatbot-meet-now-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    line-height: 1.1;
+}
+.chatbot-meet-now-copy strong {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.chatbot-meet-now-copy small {
+    font-size: 9px;
+    color: var(--text-secondary);
 }
 .chatbot-meet-now-btn[disabled] {
     opacity: 0.7;
     cursor: wait;
+    transform: none;
+    box-shadow: 0 8px 18px rgba(148, 163, 184, 0.12);
 }
 .chatbot-status-pill,
 .chatbot-room-label {

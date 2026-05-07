@@ -278,10 +278,6 @@ export const Components = {
         return `
             <div class="chatbot-meta-row">
                 <small>${participants.length} participants</small>
-                <button type="button" class="btn btn-secondary chatbot-meet-now-btn" id="chatbot-meet-now-btn" ${chatState.globalSending ? 'disabled' : ''}>
-                    <i class='bx bx-video-plus'></i>
-                    <span>${chatState.globalSending ? 'Starting...' : 'Meet now'}</span>
-                </button>
             </div>
 
             <div class="chatbot-message-list global" id="chatbot-global-messages">

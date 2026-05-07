@@ -1006,7 +1006,6 @@ function bindChatWidgetEvents() {
     const closeButton = document.getElementById('chatbot-close-btn');
     const assistantForm = document.getElementById('chatbot-assistant-form');
     const globalForm = document.getElementById('chatbot-global-form');
-    const meetNowButton = document.getElementById('chatbot-meet-now-btn');
     const assistantInput = document.getElementById('chatbot-assistant-input');
     const globalInput = document.getElementById('chatbot-global-input');
     const globalFileInput = document.getElementById('chatbot-global-file');
@@ -1016,9 +1015,6 @@ function bindChatWidgetEvents() {
     closeButton?.addEventListener('click', () => setChatWidgetOpen(false));
     assistantForm?.addEventListener('submit', handleAssistantSubmit);
     globalForm?.addEventListener('submit', handleGlobalChatSubmit);
-    meetNowButton?.addEventListener('click', () => {
-        void handleGlobalMeetNow();
-    });
     globalFileInput?.addEventListener('change', handleGlobalChatFileChange);
     globalFileRemove?.addEventListener('click', () => clearGlobalAttachment({ rerender: true }));
 
@@ -1118,12 +1114,12 @@ function showAppInfo() {
     if (appScreen) appScreen.classList.add('active');
 
     const u = AppState.currentUser;
-    sidebarAvatar.src = resolveUserAvatar(u.avatar);
-    headerAvatar.src = resolveUserAvatar(u.avatar);
-    sidebarName.textContent = u.name;
-    dropdownName.textContent = u.name;
-    sidebarRole.textContent = u.role.toUpperCase();
-    dropdownRole.textContent = u.role.toUpperCase();
+    if (sidebarAvatar) sidebarAvatar.src = resolveUserAvatar(u.avatar);
+    if (headerAvatar) headerAvatar.src = resolveUserAvatar(u.avatar);
+    if (sidebarName) sidebarName.textContent = u.name;
+    if (dropdownName) dropdownName.textContent = u.name;
+    if (sidebarRole) sidebarRole.textContent = u.role.toUpperCase();
+    if (dropdownRole) dropdownRole.textContent = u.role.toUpperCase();
 
     buildNavigation(u.role);
     renderNotifications();
@@ -2651,6 +2647,14 @@ function setupEventListeners() {
                 await AppState.logout();
                 window.location.href = '/login/';
             });
+        });
+    }
+
+    const sidebarMeetNowButton = document.getElementById('sidebar-meet-now-btn');
+    if (sidebarMeetNowButton && !sidebarMeetNowButton.hasAttribute('data-hooked')) {
+        sidebarMeetNowButton.setAttribute('data-hooked', 'true');
+        sidebarMeetNowButton.addEventListener('click', () => {
+            void handleGlobalMeetNow();
         });
     }
 
